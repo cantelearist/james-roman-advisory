@@ -20,10 +20,10 @@ test("mobile navigation opens and closes", async ({ page }) => {
   await expect(page.locator("#process")).toBeInViewport();
 });
 
-test("Private Office CTA navigates to portal", async ({ page }) => {
+test("Private Office header CTA navigates to portal", async ({ page }) => {
   await page.goto("/", { waitUntil: "networkidle" });
 
-  await page.getByRole("button", { name: "Open navigation" }).click();
-  await page.getByRole("dialog").getByRole("link", { name: /Private Office/i }).click();
+  // Private Office is always visible in the header (outside the Sheet)
+  await page.getByRole("link", { name: /Private Office/i }).click();
   await expect(page).toHaveURL(/\/portal/);
 });
