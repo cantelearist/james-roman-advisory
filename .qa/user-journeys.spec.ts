@@ -76,7 +76,7 @@ test("Private Office button in desktop nav goes to portal", async ({ page }) => 
 test("footer links have correct hrefs", async ({ page }) => {
   await page.goto("/", { waitUntil: "networkidle" });
 
-  const footer = page.getByRole("contentinfo");
+  const footer = page.locator("footer");
   await expect(footer.getByRole("link", { name: "The Process" })).toHaveAttribute("href", "#process");
   await expect(footer.getByRole("link", { name: "Certifications" })).toHaveAttribute("href", "#certifications");
   await expect(footer.getByRole("link", { name: "Client portal" })).toHaveAttribute("href", "/portal");
