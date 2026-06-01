@@ -19,9 +19,9 @@ const cormorant = Cormorant_Garamond({
 });
 
 export const metadata: Metadata = {
-  title: "James Roman Advisory | Client-Side Remediation & Inspection Oversight",
+  title: "James Roman Advisory | Private Remediation & Inspection Oversight",
   description:
-    "Confidential advisory for hazardous materials remediation protocols and structural inspection oversight in luxury residential real estate.",
+    "Private owner-side advisory for hazardous materials remediation and structural inspection oversight. Coastal estate specialists. Los Angeles.",
 };
 
 export default function RootLayout({
