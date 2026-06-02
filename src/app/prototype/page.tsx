@@ -245,16 +245,19 @@ function PracticeSection() {
         <div>
           {ROWS.map(({ n, title, body }, i) => (
             <motion.div key={n}
-              className="group grid grid-cols-[3.5rem_1fr_1.05fr] items-start gap-8 lg:gap-14 py-10 cursor-default"
+              className="group py-9 cursor-default"
               style={{ borderBottom:"1px solid rgba(178,168,152,0.08)" }}
               initial={{ opacity:0, y:18 }}
               whileInView={{ opacity:1, y:0 }}
               viewport={{ once:true, margin:"-8% 0px" }}
               transition={{ duration:1.1, delay:i*0.1, ease:EASE }}>
-              <p className="font-heading text-[1.1rem] pt-1.5" style={{ color:GOLD, opacity:0.32 }}>{n}</p>
-              <h3 className="font-heading font-light leading-[1.04] tracking-[-0.015em]"
-                style={{ fontSize:"clamp(1.4rem,2vw,2.2rem)", color:CREAM }}>{title}</h3>
-              <p className="text-[1.08rem] leading-[1.88] pt-1" style={{ color:TITAN, opacity:0.72 }}>{body}</p>
+              {/* Mobile: stacked. Desktop: 3-col */}
+              <div className="grid grid-cols-1 gap-3 lg:grid-cols-[3.5rem_1fr_1.05fr] lg:items-start lg:gap-14">
+                <p className="font-heading text-[0.85rem] tracking-[0.1em]" style={{ color:GOLD, opacity:0.32 }}>{n}</p>
+                <h3 className="font-heading font-light leading-[1.04] tracking-[-0.015em]"
+                  style={{ fontSize:"clamp(1.4rem,2vw,2.2rem)", color:CREAM }}>{title}</h3>
+                <p className="text-[1.08rem] leading-[1.88]" style={{ color:TITAN, opacity:0.72 }}>{body}</p>
+              </div>
             </motion.div>
           ))}
         </div>
