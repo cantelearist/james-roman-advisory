@@ -18,3 +18,20 @@ export async function ensureUsersTable() {
     )
   `;
 }
+
+export async function ensureConsultationsTable() {
+  const sql = getDb();
+  await sql`
+    CREATE TABLE IF NOT EXISTS consultations (
+      id            TEXT PRIMARY KEY,
+      reference_id  TEXT NOT NULL UNIQUE,
+      name          TEXT NOT NULL,
+      email         TEXT NOT NULL,
+      market        TEXT NOT NULL,
+      matter        TEXT NOT NULL,
+      message       TEXT NOT NULL,
+      summary_draft TEXT,
+      received_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
+}

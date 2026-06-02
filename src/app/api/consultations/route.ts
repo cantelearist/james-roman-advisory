@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 
 import { draftLocalIntakeSummary } from "@/lib/ai/intake-summary";
+import { ensureConsultationsTable, getDb } from "@/lib/db";
 import { consultationSchema, redactForAudit } from "@/lib/intake";
 
 export const runtime = "nodejs";
@@ -16,15 +17,18 @@ export async function POST(request: Request) {
     const input = consultationSchema.parse(body);
     const referenceId = makeReferenceId();
     const summaryDraft = draftLocalIntakeSummary(input);
+    const id = crypto.randomUUID();
 
-    // Phase 1 persistence target:
-    // - insert consultation row
-    // - send advisor email
-    // - enqueue AI intake summary for advisor-only review
+    await ensureConsultationsTable();
+    const sql = getDb();
+    await sql`
+      INSERT INTO consultations (id, reference_id, name, email, market, matter, message, summary_draft)
+      VALUES (${id}, ${referenceId}, ${input.name}, ${input.email}, ${input.market}, ${input.matter}, ${input.message}, ${summaryDraft})
+    `;
+
     console.info("consultation.received", {
       referenceId,
       audit: redactForAudit(input),
-      summaryDraft,
       receivedAt: new Date().toISOString(),
     });
 
