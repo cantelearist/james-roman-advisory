@@ -425,7 +425,7 @@ export default function Prototype() {
         </section>
 
         {/* ══ MANIFESTO ════════════════════════════════════════════════════ */}
-        <section className="relative min-h-screen flex items-center justify-center px-[12%] py-40 overflow-hidden"
+        <section className="relative flex items-center justify-center px-[12%] py-24 md:py-40 overflow-hidden"
           style={{ background:"#070809" }}>
           <div className="absolute inset-0"
             style={{ background:"radial-gradient(ellipse 65% 48% at 50% 50%, rgba(201,181,138,0.04), transparent)" }} />
@@ -503,12 +503,13 @@ export default function Prototype() {
         <PracticeSection />
 
         {/* Mid-page CTA — after Practice, before Private Office */}
-        <div className="px-[12%] py-10 flex items-center justify-between" style={{ background:"#070a0d", borderTop:"1px solid rgba(178,168,152,0.06)" }}>
-          <p className="text-[0.78rem]" style={{ color:TITAN, opacity:0.5 }}>
+        <div className="px-[12%] py-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4"
+          style={{ background:"#070a0d", borderTop:"1px solid rgba(178,168,152,0.06)" }}>
+          <p className="text-[0.76rem]" style={{ color:TITAN, opacity:0.5 }}>
             Advisory for Malibu, Bel Air, Pacific Palisades, Beverly Hills, and Bel Air estates.
           </p>
           <a href="#consultation" data-cursor="inquire"
-            className="flex-shrink-0 flex items-center gap-2 text-[0.76rem] uppercase tracking-[0.24em] hover:opacity-100 transition-opacity duration-400 ml-8"
+            className="flex-shrink-0 flex items-center gap-2 text-[0.76rem] uppercase tracking-[0.24em] hover:opacity-100 transition-opacity duration-400"
             style={{ color:GOLD, opacity:0.65 }}>
             Begin an inquiry <ArrowRight className="size-3" />
           </a>
