@@ -447,26 +447,26 @@ export default function Prototype() {
 
         {/* ══ ORIGIN ═══════════════════════════════════════════════════════ */}
         <section id="origin" className="grid lg:grid-cols-2 min-h-screen">
-          {/* Founders composite */}
+          {/* Founders — single shot on Malibu ridge */}
           <div className="relative order-2 lg:order-1 min-h-[58vh] lg:min-h-full overflow-hidden">
-            <div className="absolute inset-0">
-              <ParallaxImg src="/images/founders/roman.jpg"   alt="Roman"   speed={0.1}  className="absolute inset-0 w-1/2" />
-              <ParallaxImg src="/images/founders/stephen.jpg" alt="Stephen" speed={0.12} className="absolute inset-0 left-1/2 w-1/2" />
-              <div className="absolute inset-y-0 left-[43%] w-[14%]"
-                style={{ background:"linear-gradient(to right, transparent, rgba(10,11,14,0.75), transparent)" }} />
-              <div className="absolute inset-0"
-                style={{ background:"linear-gradient(105deg, rgba(10,11,14,0.78) 0%, rgba(10,11,14,0.1) 55%, rgba(10,11,14,0.55) 100%)" }} />
-            </div>
-            <div className="absolute bottom-8 left-8 right-8 flex justify-between">
-              <Fade>
-                <p className="text-[0.72rem] uppercase tracking-[0.28em] mb-1" style={{ color:TITAN, opacity:0.5 }}>Santa Monica</p>
-                <p className="font-heading text-[1.3rem] font-light" style={{ color:CREAM }}>Roman</p>
-              </Fade>
-              <Fade delay={0.1} className="text-right">
-                <p className="text-[0.72rem] uppercase tracking-[0.28em] mb-1" style={{ color:TITAN, opacity:0.5 }}>Malibu</p>
-                <p className="font-heading text-[1.3rem] font-light" style={{ color:CREAM }}>Stephen</p>
-              </Fade>
-            </div>
+            <ParallaxImg
+              src="/images/founders/founders-together.png"
+              alt="Roman and Stephen, co-founders of James Roman Advisory, on the Malibu coastline"
+              speed={0.1}
+              className="absolute inset-0"
+            />
+            <div className="absolute inset-0"
+              style={{ background:"linear-gradient(105deg, rgba(10,11,14,0.55) 0%, rgba(10,11,14,0.05) 50%, rgba(10,11,14,0.45) 100%)" }} />
+            <div className="absolute inset-x-0 bottom-0 h-32"
+              style={{ background:"linear-gradient(to top, rgba(10,11,14,0.85), transparent)" }} />
+            <Fade className="absolute bottom-8 left-8">
+              <p className="text-[0.68rem] uppercase tracking-[0.28em] mb-1" style={{ color:TITAN, opacity:0.55 }}>
+                Roman & Stephen · Malibu
+              </p>
+              <p className="font-heading text-[1.1rem] font-light" style={{ color:CREAM }}>
+                Co-founders
+              </p>
+            </Fade>
           </div>
 
           {/* THE TYPOGRAPHIC REFERENCE SECTION */}
