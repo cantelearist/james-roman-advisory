@@ -112,26 +112,21 @@ export default function Home() {
             </p>
           </div>
 
-          {/* Founder images */}
-          <div className="motion-fade-up motion-delay-3 mt-10 flex items-end justify-center gap-4">
-            {[
-              { src: "/images/founders/roman.jpg", name: "Roman", location: "Santa Monica" },
-              { src: "/images/founders/stephen.jpg", name: "Stephen", location: "Malibu" },
-            ].map((f) => (
-              <div key={f.name} className="group relative h-28 w-20 overflow-hidden sm:h-36 sm:w-28">
-                <Image
-                  src={f.src}
-                  alt={f.name}
-                  fill
-                  className="luxury-image object-cover object-top saturate-[0.72] contrast-[0.88]"
-                  sizes="112px"
-                />
-                <div className="absolute inset-x-0 bottom-0 h-14 bg-gradient-to-t from-background/90 to-transparent" />
-                <p className="absolute bottom-2 left-0 right-0 text-center text-[0.6rem] uppercase tracking-[0.2em] text-foreground/80">
-                  {f.location}
-                </p>
-              </div>
-            ))}
+          {/* Founders — Malibu beach */}
+          <div className="motion-fade-up motion-delay-3 mt-10 flex justify-center">
+            <div className="relative h-36 w-56 overflow-hidden sm:h-44 sm:w-72">
+              <Image
+                src="/images/founders/founders-malibu.png"
+                alt="Roman and Stephen, co-founders of James Roman Advisory, on the Malibu coast"
+                fill
+                className="luxury-image object-cover object-center saturate-[0.82] contrast-[0.90]"
+                sizes="288px"
+              />
+              <div className="absolute inset-x-0 bottom-0 h-14 bg-gradient-to-t from-background/90 to-transparent" />
+              <p className="absolute bottom-2 left-0 right-0 text-center text-[0.6rem] uppercase tracking-[0.2em] text-foreground/80">
+                Malibu, California
+              </p>
+            </div>
           </div>
 
           <div className="motion-fade-up motion-delay-3 mt-10">
