@@ -1,5 +1,27 @@
 @AGENTS.md
 
+## Absolute Rules
+
+- Do not deploy production.
+- Do not run `vercel --prod`.
+- Do not promote staging to production.
+- Do not change Prototype2/public visual style without Roman's approval.
+- No real client data.
+- No live Stripe keys.
+- Preserve the Visual Constitution: no CRM, Office Portal, or Admin feature may reduce visual calmness, perceived discretion, perceived competence, or speed.
+
+## Read First
+
+Before starting any task, read these in order:
+
+1. `HANDOFF_PROTOTYPE2.md`
+2. `docs/operations/release-log.md`
+3. `docs/superpowers/plans/2026-06-05-production-foundation-sprint-plan.md`
+4. `docs/operations/security-model.md`
+5. `docs/operations/data-retention-policy-draft.md`
+6. `docs/operations/document-scanning.md`
+7. `docs/operations/audit-logging.md`
+
 ## Memory Index
 
 Synthesized context files live in `memory/`. Read in this order for full project context:
@@ -31,6 +53,33 @@ npx vercel rollback https://jr-advisory-n0pqlh56f-roman-2757s-projects.vercel.ap
 ```
 2e7fa3fcd62cce3e100b7a1697121eddb36472f6d98bbe3b922d17d340f4d9ac
 ```
+
+## Current Verification Baseline
+
+```bash
+npm run prototype:test
+# 18 files, 58 tests passed
+
+npm run prototype:build
+# passed
+
+npx supabase db reset
+# passed
+
+npx supabase test db
+# 1 file, 20 tests, PASS
+
+npm run staging:check
+# passed, Stripe warnings only
+```
+
+## Before Reporting Complete
+
+- Run relevant targeted tests.
+- Run `npm run prototype:build`.
+- If schema/RLS changed, run `npx supabase db reset` and `npx supabase test db`.
+- Update `HANDOFF_PROTOTYPE2.md` and `docs/operations/release-log.md`.
+- Clearly state what passed, what failed, and what remains blocked.
 
 ## Operations Docs
 
