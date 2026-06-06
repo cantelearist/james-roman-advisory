@@ -224,3 +224,11 @@ Then return through the normal release process.
 A delayed deployment is usually recoverable.
 
 An unnecessary production incident rarely is.
+
+---
+
+## Related Documents
+
+- [release-log.md](./release-log.md)
+- [production-readiness.md](./production-readiness.md)
+- [production-hotfix-policy.md](./production-hotfix-policy.md)
