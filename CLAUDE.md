@@ -18,6 +18,10 @@ Synthesized context files live in `memory/`. Read in this order for full project
 **Active branch:** `staging-secure-office-foundation`
 **Worktree:** `/Users/romancantelearist/.config/superpowers/worktrees/james-roman-advisory/prototype-liquid-glass`
 
+**Staging preview:** `https://jr-advisory-lxme9mhnb-roman-2757s-projects.vercel.app`
+**Staging deployment ID:** `dpl_4d2CVJSmag8q6Z9PZcz5gFb4dnHU`
+**Staging auth:** Protected by Vercel Authentication — 401 without authorization
+
 **Emergency rollback:**
 ```bash
 npx vercel rollback https://jr-advisory-n0pqlh56f-roman-2757s-projects.vercel.app --yes --timeout 3m
@@ -26,4 +30,13 @@ npx vercel rollback https://jr-advisory-n0pqlh56f-roman-2757s-projects.vercel.ap
 **Founder image expected hash:**
 ```
 2e7fa3fcd62cce3e100b7a1697121eddb36472f6d98bbe3b922d17d340f4d9ac
+```
+
+## Operations Docs
+
+```
+docs/operations/
+├── production-hotfix-policy.md   — rules and process for hotfixes
+├── production-readiness.md       — pre-deployment checklist
+└── release-log.md                — system of record for all production deployments
 ```
