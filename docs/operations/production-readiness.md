@@ -1,128 +1,95 @@
-# production Readiness
+# Production Readiness Checklist
 
-Prototype2 stays intact as the public experience. The secure production system now has the first implementation layer for Option A: Vercel frontend plus Supabase Postgres/Auth/Storage.
+Use this checklist before any production deployment — hotfix, release, or promotion.
 
-## Visual Constitution
+A deployment that skips this checklist is not production-ready.
 
-No future CRM, Office Portal, or Admin feature may reduce:
+---
 
-- visual calmness
-- perceived discretion
-- perceived competence
-- speed
+## 1. Build
 
-See `docs/operations/visual-constitution.md`. This is a production readiness rule. A feature that makes the office/admin experience feel busier, less private, less capable, or slower is not ready for release.
+- [ ] `npm run build` passes with zero errors
+- [ ] No TypeScript errors
+- [ ] No unresolved imports
 
-## Required Environments
+## 2. Tests
 
-Create separate Supabase projects for staging and production.
+- [ ] `npm run test` passes
+- [ ] All failures are documented and understood (pre-existing vs. regression)
+- [ ] No new test failures introduced by this change
 
-Staging rule:
+## 3. Visual QA
 
-- Vercel `Preview` is the implementation of the `staging` lane.
-- staging must point to a separate Supabase staging project.
-- staging must use Stripe test-mode keys only.
-- production must not be changed, promoted, or migrated without Roman's explicit approval.
+- [ ] Homepage (`/`) renders correctly — dark editorial, JR monogram, correct nav, hero image
+- [ ] `/prototype` (Prototype2) is visually unchanged
+- [ ] Sign-in page renders on-brand
+- [ ] No layout regressions on key public routes
 
-Required Vercel variables:
+## 4. Route Smoke Test
 
-- `NEXT_PUBLIC_SUPABASE_URL`
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-- `SUPABASE_SERVICE_ROLE_KEY`
-- `STRIPE_SECRET_KEY`
-- `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`
-- `STRIPE_WEBHOOK_SECRET`
-- `STRIPE_CONNECT_CLIENT_ID` if Connect onboarding requires it.
+- [ ] `/` → 200
+- [ ] `/sign-in` → 200 (no crash, no blank page)
+- [ ] `/sign-up` → 307 redirect to sign-in
+- [ ] `/portal` → 503 (Supabase not configured locally) or 302 to sign-in (with vars set)
+- [ ] `/prototype` → 200
+- [ ] `/robots.txt` → 200
+- [ ] `/sitemap.xml` → 200
 
-Rules:
+## 5. Diff Review
 
-- `SUPABASE_SERVICE_ROLE_KEY` is server-only and must be marked sensitive.
-- `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` are server-only and must be marked sensitive.
-- staging Stripe keys must be test-mode keys.
-- Remove old Clerk and Neon variables after the cutover is confirmed.
-- Rotate any legacy key that may have been exposed during prototype work.
-- Keep Stripe live mode out of production until contractor payment flow is approved, tested in staging, and legally reviewed.
+- [ ] Diff reviewed against [production-hotfix-policy.md](./production-hotfix-policy.md)
+- [ ] Step 5 test applied: "If this bug did not exist, would this code still have been changed?"
+- [ ] No out-of-scope changes present
 
-## DNS and Route Model
+## 6. Environment
 
-The code currently supports:
+- [ ] All required env vars confirmed present in Vercel production project
+- [ ] No secrets committed to the branch
+- [ ] `/.clerk/` excluded via `.gitignore`
+- [ ] No `console.log` of sensitive values
 
-- `www.jamesroman.la` for the public Prototype2 site.
-- `/office` for the secure client office.
-- `/admin` for the internal CRM.
-- `/portal` redirects to `/office`.
+## 7. Rollback
 
-Preferred production domains:
+- [ ] Rollback target identified (commit SHA or Vercel deployment ID)
+- [ ] Rollback target is a known-good production state
+- [ ] Rollback procedure is clear
 
-- `www.jamesroman.la`
-- `office.jamesroman.la`
-- `admin.jamesroman.la`
+## 8. Security
 
-Domain mapping still needs Vercel project/domain configuration. The route code is ready for path-based operation first.
+- [ ] No MFA bypass introduced
+- [ ] No RLS bypass introduced
+- [ ] No service-role key exposed to client
+- [ ] No access control weakened
+- [ ] Audit logging intact
 
-## Supabase Setup
+## 9. Visual Constitution
 
-Apply `supabase/migrations/20260605000000_production_foundation.sql` to staging first, then production after verification.
+- [ ] Prototype2 visuals unchanged
+- [ ] Founder images unchanged
+- [ ] Typography unchanged
+- [ ] Layout unchanged
+- [ ] Brand presentation unchanged
 
-Configuration checklist:
+## 10. Approval
 
-- Enable MFA for internal users.
-- Keep `case-files` private.
-- Confirm signed upload and download URLs work.
-- Confirm RLS is enabled on every CRM table.
-- Create the first owner profile after inviting the first admin user.
-- Set production email templates for login links and invites.
-- Disable public signups; accounts are invite-only.
+- [ ] Explicit "approved — deploy" received from Roman in the current thread
+- [ ] Approval is in this session (not a prior session or inferred)
 
-## Production Verification
+---
 
-Before storing live client data:
+## Deployment Record
 
-- Public site loads at `/`, `/prototype`, and `/prototype2`.
-- `/office`, `/admin`, and `/portal` are inaccessible without login.
-- Missing or invalid auth configuration fails closed.
-- Internal users can sign in with MFA.
-- Clients can only see assigned matters.
-- Clients can only see `client` visibility documents and messages.
-- Internal users can see tenant-scoped CRM data.
-- Signed download URLs expire.
-- Every document upload, download, and message event writes an audit log.
-- Backup restore has been tested.
+After deployment, update [release-log.md](./release-log.md) with:
 
-## First Release Boundary
+- Deployment ID
+- Deployment URL
+- Timestamp (UTC)
+- Rollback target
 
-Included:
+---
 
-- Client office shell.
-- Internal CRM shell.
-- Tenant-ready schema.
-- Matter access grants.
-- Private document metadata.
-- Signed document upload/download APIs.
-- Secure messaging APIs.
-- Audit logs and file access events.
+## Related Documents
 
-Not included yet:
-
-- Live online payments.
-- Contractor, attorney, or insurance guest roles.
-- Full SaaS billing or tenant administration.
-- True end-to-end encryption.
-- Virus scanning and PDF processing workers.
-- Formal SOC 2 audit.
-
-## Contractor Payments
-
-Clients paying contractors from the office is a staged requirement.
-
-Production readiness requires:
-
-- Stripe test-mode implementation in staging.
-- Contractor connected account model.
-- Matter-scoped payment requests.
-- Admin approval before a client can pay.
-- Stripe webhook idempotency.
-- Audit logs for every payment-state transition.
-- Legal/payment review of merchant-of-record, platform fee, refund, dispute, contractor compliance, and negative-balance responsibility.
-
-Do not enable live contractor payments until all of the above is complete and Roman approves production activation.
+- [release-log.md](./release-log.md)
+- [production-hotfix-policy.md](./production-hotfix-policy.md)
+- [production-readiness.md](./production-readiness.md)
