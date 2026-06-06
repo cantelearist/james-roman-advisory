@@ -2,8 +2,11 @@ import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 
 import { draftLocalIntakeSummary } from "@/lib/ai/intake-summary";
-import { ensureConsultationsTable, getDb } from "@/lib/db";
 import { consultationSchema, redactForAudit } from "@/lib/intake";
+import { captureApiError } from "@/lib/monitoring";
+import { clientFingerprint, enforceRateLimit } from "@/lib/rate-limit";
+import { enforceSameOriginRequest } from "@/lib/request-guard";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
 
@@ -13,18 +16,37 @@ function makeReferenceId() {
 
 export async function POST(request: Request) {
   try {
+    const guardResponse = enforceSameOriginRequest(request);
+    if (guardResponse) return guardResponse;
+
+    const limitResponse = enforceRateLimit({
+      namespace: "consultation-intake",
+      limit: 12,
+      windowMs: 60_000,
+      keyParts: [clientFingerprint(request)],
+    });
+    if (limitResponse) return limitResponse;
+
     const body = await request.json();
     const input = consultationSchema.parse(body);
     const referenceId = makeReferenceId();
     const summaryDraft = draftLocalIntakeSummary(input);
     const id = crypto.randomUUID();
+    // Service-role use is limited here to public intake before a user account exists.
+    const supabase = createSupabaseAdminClient();
 
-    await ensureConsultationsTable();
-    const sql = getDb();
-    await sql`
-      INSERT INTO consultations (id, reference_id, name, email, market, matter, message, summary_draft)
-      VALUES (${id}, ${referenceId}, ${input.name}, ${input.email}, ${input.market}, ${input.matter}, ${input.message}, ${summaryDraft})
-    `;
+    const { error } = await supabase.from("consultation_requests").insert({
+      id,
+      reference_id: referenceId,
+      name: input.name,
+      email: input.email,
+      market: input.market,
+      matter: input.matter,
+      message: input.message,
+      summary_draft: summaryDraft,
+    });
+
+    if (error) throw error;
 
     console.info("consultation.received", {
       referenceId,
@@ -52,6 +74,7 @@ export async function POST(request: Request) {
     }
 
     console.error("consultation.failed", error);
+    captureApiError("/api/consultations", 500, error, { operation: "consultation.create" });
     return NextResponse.json(
       { message: "The request could not be submitted. Please try again." },
       { status: 500 },

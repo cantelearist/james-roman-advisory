@@ -1,4 +1,21 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const { captureApiErrorMock, insertMock } = vi.hoisted(() => ({
+  captureApiErrorMock: vi.fn(),
+  insertMock: vi.fn(),
+}));
+
+vi.mock("@/lib/supabase/admin", () => ({
+  createSupabaseAdminClient: () => ({
+    from: vi.fn(() => ({
+      insert: insertMock,
+    })),
+  }),
+}));
+
+vi.mock("@/lib/monitoring", () => ({
+  captureApiError: captureApiErrorMock,
+}));
 
 import { POST } from "./route";
 
@@ -19,8 +36,14 @@ function requestFor(body: unknown) {
 }
 
 describe("POST /api/consultations", () => {
+  beforeEach(() => {
+    insertMock.mockResolvedValue({ error: null });
+    captureApiErrorMock.mockReset();
+  });
+
   afterEach(() => {
     vi.restoreAllMocks();
+    insertMock.mockReset();
   });
 
   it("accepts valid consultation requests and returns a private reference", async () => {
@@ -41,6 +64,12 @@ describe("POST /api/consultations", () => {
           nameInitials: "PC",
           emailDomain: "example.com",
         }),
+      }),
+    );
+    expect(insertMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        email: validBody.email,
+        market: validBody.market,
       }),
     );
   });
@@ -79,5 +108,29 @@ describe("POST /api/consultations", () => {
     expect(response.status).toBe(500);
     expect(json.message).toBe("The request could not be submitted. Please try again.");
     expect(console.error).toHaveBeenCalledWith("consultation.failed", expect.any(SyntaxError));
+    expect(captureApiErrorMock).toHaveBeenCalledWith(
+      "/api/consultations",
+      500,
+      expect.any(SyntaxError),
+      expect.objectContaining({ operation: "consultation.create" }),
+    );
+  });
+
+  it("returns a generic error when persistence fails", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    insertMock.mockResolvedValueOnce({ error: new Error("database unavailable") });
+
+    const response = await POST(requestFor(validBody));
+    const json = await response.json();
+
+    expect(response.status).toBe(500);
+    expect(json.message).toBe("The request could not be submitted. Please try again.");
+    expect(console.error).toHaveBeenCalledWith("consultation.failed", expect.any(Error));
+    expect(captureApiErrorMock).toHaveBeenCalledWith(
+      "/api/consultations",
+      500,
+      expect.any(Error),
+      expect.objectContaining({ operation: "consultation.create" }),
+    );
   });
 });

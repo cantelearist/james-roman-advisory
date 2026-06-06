@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { motion, useMotionValue, useSpring } from "motion/react";
 
 // ─── Spotlight cursor ─────────────────────────────────────────────────────────
-// A 420px radial-gradient glow follows the mouse with spring inertia.
+// A compact radial-gradient glow follows the mouse with spring inertia.
 // mix-blend-mode: screen creates an ambient light spill over the dark background.
 // A small gold dot marks the precise pointer position.
 
@@ -51,16 +51,23 @@ export function CustomCursor() {
     };
   }, [mx, my]);
 
-  const glowSize = isHover ? 560 : isClick ? 300 : 420;
+  const glowSize = isHover ? 280 : isClick ? 150 : 210;
   const glowAlpha = isHover ? 0.13 : isClick ? 0.2 : 0.09;
 
   return (
     <>
-      <style>{`* { cursor: none !important; }`}</style>
+      <style>{`
+        @media (pointer: fine) and (min-width: 768px) {
+          * { cursor: none !important; }
+        }
+        @media (pointer: coarse), (max-width: 767px) {
+          .jra-custom-cursor { display: none !important; }
+        }
+      `}</style>
 
       {/* Spotlight glow — blend-mode screen, drifts lazily */}
       <motion.div
-        className="fixed top-0 left-0 pointer-events-none z-[9990] rounded-full"
+        className="jra-custom-cursor fixed top-0 left-0 pointer-events-none z-[9990] rounded-full"
         style={{
           x: gx, y: gy,
           translateX: "-50%", translateY: "-50%",
@@ -77,7 +84,7 @@ export function CustomCursor() {
 
       {/* Hard vignette ring — barely visible, sharpens the glow edge */}
       <motion.div
-        className="fixed top-0 left-0 pointer-events-none z-[9991] rounded-full"
+        className="jra-custom-cursor fixed top-0 left-0 pointer-events-none z-[9991] rounded-full"
         style={{
           x: gx, y: gy,
           translateX: "-50%", translateY: "-50%",
@@ -93,13 +100,13 @@ export function CustomCursor() {
 
       {/* Gold dot — precise, snappy */}
       <motion.div
-        className="fixed top-0 left-0 pointer-events-none z-[9999]"
+        className="jra-custom-cursor fixed top-0 left-0 pointer-events-none z-[9999]"
         style={{
           x: dx, y: dy,
           translateX: "-50%", translateY: "-50%",
           opacity: visible ? 1 : 0,
         }}
-        animate={{ width: isHover ? 6 : isClick ? 3 : 4, height: isHover ? 6 : isClick ? 3 : 4 }}
+        animate={{ width: isHover ? 18 : isClick ? 9 : 12, height: isHover ? 18 : isClick ? 9 : 12 }}
         transition={{ duration: 0.2 }}
       >
         <div className="w-full h-full rounded-full" style={{ background: "#c9b58a" }} />
@@ -107,14 +114,14 @@ export function CustomCursor() {
 
       {/* Hover ring — thin, expands to embrace interactive elements */}
       <motion.div
-        className="fixed top-0 left-0 pointer-events-none z-[9998] rounded-full"
+        className="jra-custom-cursor fixed top-0 left-0 pointer-events-none z-[9998] rounded-full"
         style={{
           x: dx, y: dy,
           translateX: "-50%", translateY: "-50%",
         }}
         animate={{
-          width: isHover ? 40 : 0,
-          height: isHover ? 40 : 0,
+          width: isHover ? 58 : 0,
+          height: isHover ? 58 : 0,
           opacity: isHover ? 0.5 : 0,
         }}
         transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
