@@ -14,11 +14,9 @@ The following Tier 2 governance documents are referenced in `MULTI_AGENT_PROTOCO
 
 | Document | Path | Status |
 |----------|------|--------|
-| Architecture | `docs/ARCHITECTURE.md` | Stub — pending |
-| Security Model | `docs/SECURITY_MODEL.md` | Stub — pending |
-| Matter Lifecycle | `docs/MATTER_LIFECYCLE.md` | Stub — pending |
-
-Until these are complete, agents must escalate decisions in those domains to Roman rather than proceeding on assumptions.
+| Architecture | `docs/ARCHITECTURE.md` | Active — v1.0 |
+| Security Model | `docs/SECURITY_MODEL.md` | Active — v1.0 |
+| Matter Lifecycle | `docs/MATTER_LIFECYCLE.md` | Active — v1.0 |
 
 ---
 
