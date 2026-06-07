@@ -118,7 +118,8 @@ docs/
 └── operations/
     ├── production-hotfix-policy.md   — rules and process for hotfixes
     ├── production-readiness.md       — pre-deployment checklist
-    └── release-log.md                — system of record for all production deployments
+    ├── release-log.md                — system of record for all production deployments
+    └── sentry-monitoring.md          — Sentry setup, DSN requirements, PII scrubbing rules
 ```
 
 ## Current-State Requirement
