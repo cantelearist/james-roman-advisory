@@ -1,5 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+// Mock the DB layer so the valid-intake test does not need DATABASE_URL in the
+// test environment. ensureConsultationsTable and the tagged-template sql call
+// are both no-ops in tests; the route's business logic (validation, referenceId
+// generation, audit redaction) is what we are actually exercising here.
+vi.mock("@/lib/db", () => ({
+  getDb: vi.fn(() => vi.fn().mockResolvedValue([])),
+  ensureConsultationsTable: vi.fn().mockResolvedValue(undefined),
+}));
+
 import { POST } from "./route";
 
 const validBody = {
