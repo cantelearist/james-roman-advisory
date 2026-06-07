@@ -481,7 +481,7 @@ export default function Prototype() {
           {/* Founders — single shot on Malibu beach */}
           <div className="relative order-2 lg:order-1 min-h-[58vh] lg:min-h-full overflow-hidden">
             <ParallaxImg
-              src="/images/founders/founders-malibu-beach.png"
+              src="/images/founders/founders-together.png"
               alt="Roman and Stephen, co-founders of James Roman Advisory, on the Malibu coastline"
               speed={0.1}
               className="absolute inset-0"
