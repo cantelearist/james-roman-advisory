@@ -21,25 +21,25 @@ The goal is to let a new agent understand the current state in under two minutes
 
 **Domain:** `https://www.jamesroman.la`
 
-**Active production deployment:** `dpl_5pfCVGA2rn8awWapemmqfGNk7RQ3`
+**Active production deployment:** `jr-advisory-cyie1utur-roman-2757s-projects.vercel.app`
 
-**Production URL:** `https://jr-advisory-nw2vs1ok0-roman-2757s-projects.vercel.app`
+**Deployed:** 2026-06-07 from `hotfix/remove-clerk` (via promote of `jr-advisory-30mfpl513`)
 
-**Deployed:** 2026-06-07T06:31:24Z from `hotfix/remove-clerk` @ `3b4ba53`
-
-**Rollback target:** `dpl_6t7vzRxwcaEysXg1bVP9o3kqZpLi` (pre-hotfix baseline)
+**Rollback target:** `jr-advisory-g8ymd18f2-roman-2757s-projects.vercel.app` (previous June 5 snapshot)
 
 ```bash
 # Emergency rollback if needed:
-npx vercel rollback dpl_6t7vzRxwcaEysXg1bVP9o3kqZpLi --yes --timeout 3m
-npx vercel alias set jr-advisory-l925rkcj8-roman-2757s-projects.vercel.app www.jamesroman.la
+node_modules/.bin/vercel alias jr-advisory-g8ymd18f2-roman-2757s-projects.vercel.app www.jamesroman.la
 ```
 
 **Production status:**
 
-- Production is live and stable. All routes verified 200.
+- Production is live. All three routes (/, /prototype, /prototype2) verified 200.
+- Prototype experience (liquid glass, GSAP, Lenis) is live on all three routes.
+- `page.tsx` = `export { default } from "./prototype/page"` (re-export)
+- `prototype2/page.tsx` = independent 797-line copy of prototype experience
+- `founders-together.png` (Malibu ridge shot) confirmed in HTML.
 - No production deploy without Roman's explicit approval in the current thread.
-- Prototype2/public visual experience must remain unchanged unless Roman explicitly approves a visual change.
 
 **Bad deployment:**
 
@@ -55,19 +55,27 @@ Never promote this deployment.
 
 **Active staging branch:** `staging-secure-office-foundation`
 
-**Staging preview:** `https://jr-advisory-lxme9mhnb-roman-2757s-projects.vercel.app`
+**Staging preview:** `https://jr-advisory-55j9uyv1r-roman-2757s-projects.vercel.app`
 
-**Staging deployment ID:** `dpl_4d2CVJSmag8q6Z9PZcz5gFb4dnHU`
-
-**Staging access:** Protected by Vercel Authentication — 401 without authorization.
+**Staging access:** Protected by Vercel Authentication (SSO) — 401 without Vercel login. Access via Vercel dashboard.
 
 **Staging status:**
 
-- Staging is the correct lane for secure office, CRM, auth, RLS, document exchange, payments, and infrastructure work.
+- Staging build clean — /, /prototype, /prototype2 all static ✅
+- Prototype experience on all routes matches production.
+- Staging has full security feature set: /admin, /office, /api/*, auth/callback, document flows, rate limiting, CSRF guards.
 - Staging must remain separate from production.
 - No real client data.
 - No live Stripe keys.
 - No live contractor payouts.
+
+---
+
+## Visual Benchmark
+
+**Reference deployment:** `https://jr-advisory-g8ymd18f2-roman-2757s-projects.vercel.app`
+
+Roman confirmed this as the visual benchmark for all environments. All routes must show the prototype experience (liquid glass, GSAP scroll, Lenis smooth scroll, `founders-together.png` Malibu ridge shot).
 
 ---
 
@@ -88,17 +96,15 @@ Current known active foundation areas:
 
 ## Current Verification Baseline
 
-Latest known baseline (hotfix branch, pre-deploy):
+Latest known baseline (2026-06-07):
 
 ```bash
-npm run build
-# passed (Next.js 15, no type errors)
+# Production routes
+curl -s -o /dev/null -w "%{http_code}" https://www.jamesroman.la/        # 200
+curl -s -o /dev/null -w "%{http_code}" https://www.jamesroman.la/prototype  # 200
+curl -s -o /dev/null -w "%{http_code}" https://www.jamesroman.la/prototype2 # 200
 
-npm test
-# 36/37 passing (1 pre-existing DATABASE_URL env failure — not a regression)
-
-curl https://www.jamesroman.la{/,/sign-in,/sign-up,/prototype2,/prototype2/contact,/portal}
-# all → 200
+# Content confirmed: founders-together, jra-hero, smooth (prototype components)
 ```
 
 ---
@@ -110,6 +116,7 @@ curl https://www.jamesroman.la{/,/sign-in,/sign-up,/prototype2,/prototype2/conta
 - Sentry DSN not yet set — monitoring is installed but inactive.
 - Counsel approval required for retention/CPRA language before real client data is stored.
 - `consultations/route.test.ts` (valid intake POST) requires `DATABASE_URL` in test env — pre-existing gap.
+- Staging domain alias (`staging.jamesroman.la`) not yet set — staging accessible only via Vercel SSO or dashboard.
 
 ---
 
