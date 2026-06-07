@@ -21,7 +21,7 @@ The goal is to let a new agent understand the current state in under two minutes
 
 **Domain:** `https://www.jamesroman.la`
 
-**Approved production deployment:** `dpl_3yFwfQ7GgDdeDbx4w9tuTEMpQryZ`
+**Approved production deployment:** `dpl_5pfCVGA2rn8awWapemmqfGNk7RQ3`
 
 **Rollback target:**
 
@@ -49,9 +49,9 @@ Never promote this deployment.
 
 **Active staging branch:** `staging-secure-office-foundation`
 
-**Staging preview:** `https://jr-advisory-n92x7bmb7-roman-2757s-projects.vercel.app`
+**Staging preview:** `https://jr-advisory-drq3pmu1l-roman-2757s-projects.vercel.app`
 
-**Staging deployment ID:** `dpl_3cSp8YtziGa2K74a63G14YFVtM8C`
+**Staging deployment ID:** `dpl_drq3pmu1l`
 
 **Staging access:** Protected by Vercel Authentication — 401 without authorization.
 
