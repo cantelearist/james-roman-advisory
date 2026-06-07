@@ -16,9 +16,9 @@ Before starting any task, read these in order:
 
 1. `docs/PROJECT_GOVERNANCE.md` — mission, philosophy, final decision rules
 2. `docs/MULTI_AGENT_PROTOCOL.md` — authority hierarchy, agent lanes, session protocol, production rules
-3. `docs/ARCHITECTURE.md` — system structure (stub — pending)
-4. `docs/SECURITY_MODEL.md` — security design (stub — pending)
-5. `docs/MATTER_LIFECYCLE.md` — workflow model (stub — pending)
+3. `docs/ARCHITECTURE.md` — system structure, routes, auth flow, middleware, storage
+4. `docs/SECURITY_MODEL.md` — auth model, RLS, service-role policy, audit logging, storage security
+5. `docs/MATTER_LIFECYCLE.md` — full lifecycle, transition rules, document security, feature attachment points
 6. `HANDOFF_PROTOTYPE2.md` — current state, blockers, deployment history
 7. `docs/operations/release-log.md` — what has been deployed and when
 
@@ -87,9 +87,9 @@ npm run staging:check
 docs/
 ├── PROJECT_GOVERNANCE.md         — mission, philosophy, final decision rules
 ├── MULTI_AGENT_PROTOCOL.md       — agent lanes, session protocol, production rules
-├── ARCHITECTURE.md               — system structure (stub — pending)
-├── SECURITY_MODEL.md             — security design (stub — pending)
-├── MATTER_LIFECYCLE.md           — workflow model (stub — pending)
+├── ARCHITECTURE.md               — system structure, routes, auth flow, middleware
+├── SECURITY_MODEL.md             — auth, RLS, service-role, audit, storage security
+├── MATTER_LIFECYCLE.md           — lifecycle, transitions, document rules, billing hooks
 └── operations/
     ├── production-hotfix-policy.md   — rules and process for hotfixes
     ├── production-readiness.md       — pre-deployment checklist
