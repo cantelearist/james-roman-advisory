@@ -14,6 +14,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
 
 type SubmitState =
   | { status: "idle"; message: "" }
@@ -21,7 +22,12 @@ type SubmitState =
   | { status: "success"; message: string }
   | { status: "error"; message: string };
 
-export function ConsultationForm() {
+type ConsultationFormProps = {
+  variant?: "card" | "integrated";
+  className?: string;
+};
+
+export function ConsultationForm({ variant = "card", className }: ConsultationFormProps) {
   const [state, setState] = useState<SubmitState>({ status: "idle", message: "" });
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
@@ -58,17 +64,33 @@ export function ConsultationForm() {
   }
 
   const isSubmitting = state.status === "submitting";
+  const integrated = variant === "integrated";
 
   return (
-    <Card className="rounded-md shadow-none">
-      <CardHeader>
-        <CardTitle>Consultation request</CardTitle>
-        <CardDescription>
+    <Card
+      className={cn(
+        "rounded-md shadow-none",
+        integrated && "gap-8 rounded-none border-0 bg-transparent py-0 text-inherit ring-0",
+        className
+      )}
+    >
+      <CardHeader className={cn(integrated && "border-b px-0 pb-7", integrated && "border-[rgba(178,168,152,0.12)]")}>
+        <CardTitle className={cn(integrated && "font-heading text-[1.22rem] font-light text-[#ece6d6]")}>
+          Consultation request
+        </CardTitle>
+        <CardDescription className={cn(integrated && "max-w-lg text-[0.95rem] leading-[1.8] text-[#b2a898]/75")}>
           Submissions are validated locally and prepared for secure advisor review.
         </CardDescription>
       </CardHeader>
-      <CardContent>
-        <form className="grid gap-5" onSubmit={onSubmit}>
+      <CardContent className={cn(integrated && "px-0")}>
+        <form
+          className={cn(
+            "grid gap-5",
+            integrated &&
+              "[&_button]:rounded-none [&_button]:bg-[#c9b58a] [&_button]:px-8 [&_button]:text-[#06111f] [&_button]:uppercase [&_button]:tracking-[0.18em] [&_input]:h-12 [&_input]:rounded-none [&_input]:border-[#b2a898]/20 [&_input]:bg-transparent [&_input]:text-[#ece6d6] [&_input]:placeholder:text-[#b2a898]/35 [&_label]:text-[0.72rem] [&_label]:uppercase [&_label]:tracking-[0.22em] [&_label]:text-[#b2a898]/80 [&_textarea]:rounded-none [&_textarea]:border-[#b2a898]/20 [&_textarea]:bg-transparent [&_textarea]:text-[#ece6d6]"
+          )}
+          onSubmit={onSubmit}
+        >
           <div className="grid gap-5 sm:grid-cols-2">
             <div className="flex flex-col gap-2">
               <Label htmlFor="name">Name</Label>
