@@ -10,6 +10,7 @@ import {
   useInView,
   useMotionValue,
   useSpring,
+  useReducedMotion,
   AnimatePresence,
 } from "motion/react";
 import { ArrowRight } from "lucide-react";
@@ -42,10 +43,12 @@ function Grain() {
 function Line({ delay=0 }: { delay?:number }) {
   const ref = useRef<HTMLDivElement>(null);
   const inView = useInView(ref, { once:true });
+  const reduced = useReducedMotion();
   return (
     <div ref={ref} className="overflow-hidden w-full">
       <motion.div className="h-px" style={{ background:"rgba(201,181,138,0.15)", originX:0 }}
-        initial={{ scaleX:0 }} animate={inView ? { scaleX:1 } : {}}
+        initial={reduced ? { scaleX:1 } : { scaleX:0 }}
+        animate={inView ? { scaleX:1 } : {}}
         transition={{ duration:1.8, delay, ease:EASE }} />
     </div>
   );
@@ -55,9 +58,11 @@ function Line({ delay=0 }: { delay?:number }) {
 function Fade({ children, delay=0, className="" }: { children:React.ReactNode; delay?:number; className?:string }) {
   const ref = useRef<HTMLDivElement>(null);
   const inView = useInView(ref, { once:true, margin:"-6% 0px" });
+  const reduced = useReducedMotion();
   return (
     <motion.div ref={ref} className={className}
-      initial={{ opacity:0, y:28 }} animate={inView ? { opacity:1, y:0 } : {}}
+      initial={reduced ? { opacity:1, y:0 } : { opacity:0, y:28 }}
+      animate={inView ? { opacity:1, y:0 } : {}}
       transition={{ duration:1.3, delay, ease:EASE }}>
       {children}
     </motion.div>
@@ -69,7 +74,7 @@ function Label({ children, delay=0, center=false }: { children:React.ReactNode; 
   return (
     <Fade delay={delay}>
       <p className={`text-[0.8rem] uppercase tracking-[0.38em] mb-7 ${center?"text-center":""}`}
-        style={{ color:TITAN, opacity:0.65 }}>{children}</p>
+        style={{ color:TITAN, opacity:0.78 }}>{children}</p>
     </Fade>
   );
 }
@@ -77,13 +82,17 @@ function Label({ children, delay=0, center=false }: { children:React.ReactNode; 
 // ─── Multi-color heading ──────────────────────────────────────────────────────
 type CW = { text:string; color:string };
 function RichH({
-  lines, size="clamp(1.8rem,2.8vw,3.5rem)", className="", baseDelay=0, center=false,
+  lines, size="clamp(1.8rem,2.8vw,3.5rem)", className="", baseDelay=0, center=false, blur=false,
 }: {
-  lines:CW[][]; size?:string; className?:string; baseDelay?:number; center?:boolean;
+  lines:CW[][]; size?:string; className?:string; baseDelay?:number; center?:boolean; blur?:boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const inView = useInView(ref, { once:true, margin:"-8% 0px" });
+  const reduced = useReducedMotion();
   let idx = 0;
+  const from = reduced ? { opacity:1, y:0, filter:"blur(0px)" }
+    : blur ? { opacity:0, y:20, filter:"blur(8px)" }
+    : { opacity:0, y:18, filter:"blur(0px)" };
   return (
     <h2 ref={ref} className={`font-heading font-light leading-[0.93] tracking-[-0.025em] ${center?"text-center":""} ${className}`}
       style={{ fontSize:size, textShadow:"0 2px 12px rgba(0,0,0,0.5), 0 1px 3px rgba(0,0,0,0.4)" }}>
@@ -93,9 +102,9 @@ function RichH({
             const i = idx++;
             return (
               <motion.span key={i} className="inline-block mr-[0.22em]" style={{ color:seg.color }}
-                initial={{ opacity:0, y:20, filter:"blur(8px)" }}
+                initial={from}
                 animate={inView ? { opacity:1, y:0, filter:"blur(0px)" } : {}}
-                transition={{ duration:1.15, delay:baseDelay + i*0.08, ease:EASE }}>
+                transition={{ duration: blur ? 1.15 : 0.9, delay:baseDelay + i*0.08, ease:EASE }}>
                 {word}
               </motion.span>
             );
@@ -114,7 +123,7 @@ function ParallaxImg({ src, alt, speed=0.14, className="" }: { src:string; alt:s
   return (
     <div ref={ref} className={`overflow-hidden ${className}`}>
       <motion.div style={{ y }} className="w-full h-[132%] -mt-[16%]">
-        <Image src={src} alt={alt} fill className="object-cover object-center" sizes="100vw" />
+        <Image src={src} alt={alt} fill className="object-cover object-center saturate-[0.45] contrast-[0.88] brightness-[0.85]" sizes="100vw" />
       </motion.div>
     </div>
   );
@@ -236,7 +245,7 @@ function PracticeSection() {
             style={{ borderBottom:"1px solid rgba(178,168,152,0.12)" }}>
             <RichH size="clamp(1.8rem,2.8vw,3.5rem)"
               lines={[[{text:"Advocacy,",color:CREAM}],[{text:"not",color:TITAN},{text:"remediation.",color:CREAM}]]} />
-            <p className="text-[1.08rem] leading-[1.88] lg:max-w-sm lg:text-right" style={{ color:TITAN, opacity:0.7 }}>
+            <p className="text-[1.08rem] leading-[1.88] lg:max-w-sm lg:text-right" style={{ color:TITAN, opacity:0.88 }}>
               We carry no hammers and file no invoices for work. Our only product is judgment
               applied exclusively on behalf of the owner.
             </p>
@@ -256,7 +265,7 @@ function PracticeSection() {
                 <p className="font-heading text-[0.85rem] tracking-[0.1em]" style={{ color:GOLD, opacity:0.32 }}>{n}</p>
                 <h3 className="font-heading font-light leading-[1.04] tracking-[-0.015em]"
                   style={{ fontSize:"clamp(1.4rem,2vw,2.2rem)", color:CREAM }}>{title}</h3>
-                <p className="text-[1.08rem] leading-[1.88]" style={{ color:TITAN, opacity:0.72 }}>{body}</p>
+                <p className="text-[1.08rem] leading-[1.88]" style={{ color:TITAN, opacity:0.88 }}>{body}</p>
               </div>
             </motion.div>
           ))}
@@ -322,7 +331,7 @@ export default function Prototype() {
         >
           <Link href="/" aria-label="Home">
             {/* 50% bigger than h-11 (2.75rem) → ~4.2rem */}
-            <BrandLogo className="opacity-88 !h-[4.2rem]" />
+            <BrandLogo className="opacity-88 h-8 sm:h-10 md:!h-[4.2rem]" />
           </Link>
           <nav className="hidden md:flex items-center gap-10 text-[0.86rem] uppercase tracking-[0.2em]"
             style={{ color:TITAN, opacity:0.7 }}>
@@ -341,7 +350,7 @@ export default function Prototype() {
         <section ref={heroRef as React.RefObject<HTMLDivElement>} className="relative h-screen min-h-[700px] flex items-end overflow-hidden">
           <motion.div className="absolute inset-0" style={{ y:heroY, scale:heroScale }}>
             <Image src="/images/jra-hero.jpg" alt="Malibu coastal estate" fill priority
-              className="object-cover object-center" sizes="100vw" />
+              className="object-cover object-center saturate-[0.45] contrast-[0.88] brightness-[0.85]" sizes="100vw" />
             <div className="absolute inset-0"
               style={{ background:"linear-gradient(to top, rgba(10,11,14,1) 0%, rgba(10,11,14,0.38) 55%, rgba(10,11,14,0.12) 100%)" }} />
           </motion.div>
@@ -351,9 +360,16 @@ export default function Prototype() {
             <AnimatePresence>
               {introComplete && mounted && (
                 <>
-                  <motion.p className="mb-9 text-[0.82rem] uppercase tracking-[0.36em]"
+                  {/* Value prop — answers "what do they do" on first viewport */}
+                  <motion.p className="mb-3 text-[0.7rem] uppercase tracking-[0.28em]"
+                    style={{ color:GOLD, opacity:0 }}
+                    animate={{ opacity:0.72 }}
+                    transition={{ duration:1.0, delay:0.05, ease:EASE }}>
+                    Owner-side advisory · No contractors · No conflicts
+                  </motion.p>
+                  <motion.p className="mb-9 text-[0.78rem] uppercase tracking-[0.32em]"
                     style={{ color:TITAN, opacity:0 }}
-                    animate={{ opacity:0.6 }}
+                    animate={{ opacity:0.78 }}
                     transition={{ duration:1.2, delay:0.1, ease:EASE }}>
                     Private advisory · Los Angeles coastal estates
                   </motion.p>
@@ -415,7 +431,7 @@ export default function Prototype() {
             style={{ background:"radial-gradient(ellipse 65% 48% at 50% 50%, rgba(201,181,138,0.04), transparent)" }} />
           <div className="relative max-w-5xl text-center">
             <Label center>The operating principle</Label>
-            <RichH center size="clamp(1.8rem,2.8vw,3.5rem)" baseDelay={0.05}
+            <RichH center blur size="clamp(1.8rem,2.8vw,3.5rem)" baseDelay={0.05}
               lines={[
                 [{text:"We lost our home twice",color:CREAM}],
                 [{text:"in thirty years.",color:TITAN},{text:"We don't",color:CREAM}],
@@ -431,26 +447,26 @@ export default function Prototype() {
 
         {/* ══ ORIGIN ═══════════════════════════════════════════════════════ */}
         <section id="origin" className="grid lg:grid-cols-2 min-h-screen">
-          {/* Founders composite */}
+          {/* Founders — single shot on Malibu ridge */}
           <div className="relative order-2 lg:order-1 min-h-[58vh] lg:min-h-full overflow-hidden">
-            <div className="absolute inset-0">
-              <ParallaxImg src="/images/founders/roman.jpg"   alt="Roman"   speed={0.1}  className="absolute inset-0 w-1/2" />
-              <ParallaxImg src="/images/founders/stephen.jpg" alt="Stephen" speed={0.12} className="absolute inset-0 left-1/2 w-1/2" />
-              <div className="absolute inset-y-0 left-[43%] w-[14%]"
-                style={{ background:"linear-gradient(to right, transparent, rgba(10,11,14,0.75), transparent)" }} />
-              <div className="absolute inset-0"
-                style={{ background:"linear-gradient(105deg, rgba(10,11,14,0.78) 0%, rgba(10,11,14,0.1) 55%, rgba(10,11,14,0.55) 100%)" }} />
-            </div>
-            <div className="absolute bottom-8 left-8 right-8 flex justify-between">
-              <Fade>
-                <p className="text-[0.72rem] uppercase tracking-[0.28em] mb-1" style={{ color:TITAN, opacity:0.5 }}>Santa Monica</p>
-                <p className="font-heading text-[1.3rem] font-light" style={{ color:CREAM }}>Roman</p>
-              </Fade>
-              <Fade delay={0.1} className="text-right">
-                <p className="text-[0.72rem] uppercase tracking-[0.28em] mb-1" style={{ color:TITAN, opacity:0.5 }}>Malibu</p>
-                <p className="font-heading text-[1.3rem] font-light" style={{ color:CREAM }}>Stephen</p>
-              </Fade>
-            </div>
+            <ParallaxImg
+              src="/images/founders/founders-together.png"
+              alt="Roman and Stephen, co-founders of James Roman Advisory, on the Malibu coastline"
+              speed={0.1}
+              className="absolute inset-0"
+            />
+            <div className="absolute inset-0"
+              style={{ background:"linear-gradient(105deg, rgba(10,11,14,0.55) 0%, rgba(10,11,14,0.05) 50%, rgba(10,11,14,0.45) 100%)" }} />
+            <div className="absolute inset-x-0 bottom-0 h-32"
+              style={{ background:"linear-gradient(to top, rgba(10,11,14,0.85), transparent)" }} />
+            <Fade className="absolute bottom-8 left-8">
+              <p className="text-[0.68rem] uppercase tracking-[0.28em] mb-1" style={{ color:TITAN, opacity:0.55 }}>
+                Roman & Stephen · Malibu
+              </p>
+              <p className="font-heading text-[1.1rem] font-light" style={{ color:CREAM }}>
+                Co-founders
+              </p>
+            </Fade>
           </div>
 
           {/* THE TYPOGRAPHIC REFERENCE SECTION */}
@@ -465,18 +481,38 @@ export default function Prototype() {
               ]} />
             <Line delay={0.5} />
             <div className="mt-10 space-y-7"
-              style={{ fontSize:"1.08rem", lineHeight:"1.9", color:TITAN, opacity:0.8 }}>
+              style={{ fontSize:"1.08rem", lineHeight:"1.9", color:TITAN, opacity:0.88, maxWidth:"52ch" }}>
               {[
                 "Stephen was born in Malibu. He watched his family's home burn in 1993 and again in 2018. Both times, the hardest part wasn't the loss — it was what came after: contractors who couldn't be trusted, advisors who worked for the insurance company.",
                 "Roman spent years overseeing construction across Los Angeles and watched, repeatedly, how quickly standards drift when no one is clearly standing for the person paying the bill.",
                 "James Roman Advisory exists because both of them needed it, years before they built it.",
               ].map((p,i) => <Fade key={i} delay={0.55 + i*0.2}><p>{p}</p></Fade>)}
             </div>
+            {/* Mid-page CTA — after Origin narrative */}
+            <Fade delay={0.95} className="mt-10">
+              <a href="#consultation" data-cursor="inquire"
+                className="inline-flex items-center gap-2 text-[0.76rem] uppercase tracking-[0.24em] hover:opacity-100 transition-opacity duration-400"
+                style={{ color:GOLD, opacity:0.6 }}>
+                Book a private consultation <ArrowRight className="size-3" />
+              </a>
+            </Fade>
           </div>
         </section>
 
         {/* ══ PRACTICE ══════════════════════════════════════════════════════ */}
         <PracticeSection />
+
+        {/* Mid-page CTA — after Practice, before Private Office */}
+        <div className="px-[12%] py-10 flex items-center justify-between" style={{ background:"#070a0d", borderTop:"1px solid rgba(178,168,152,0.06)" }}>
+          <p className="text-[0.78rem]" style={{ color:TITAN, opacity:0.5 }}>
+            Advisory for Malibu, Bel Air, Pacific Palisades, Beverly Hills, and Bel Air estates.
+          </p>
+          <a href="#consultation" data-cursor="inquire"
+            className="flex-shrink-0 flex items-center gap-2 text-[0.76rem] uppercase tracking-[0.24em] hover:opacity-100 transition-opacity duration-400 ml-8"
+            style={{ color:GOLD, opacity:0.65 }}>
+            Begin an inquiry <ArrowRight className="size-3" />
+          </a>
+        </div>
 
         {/* ══ PRIVATE OFFICE — Malibu background ═══════════════════════════ */}
         <section ref={officeRef} id="private-office"
@@ -525,14 +561,14 @@ export default function Prototype() {
 
           <div className="relative z-10 w-full max-w-5xl mx-auto px-[12%] py-28 grid lg:grid-cols-2 gap-20 items-center">
             <div>
-              <Label>The Concierge Experience</Label>
+              <Label>Concierge Experience</Label>
               <RichH size="clamp(1.8rem,2.8vw,3.5rem)" baseDelay={0.1} className="mb-10"
                 lines={[
                   [{text:"Your",color:TITAN},{text:"Private",color:CREAM}],
                   [{text:"Office.",color:GOLD}],
                 ]} />
               <Fade delay={0.5}>
-                <p className="text-[1.08rem] leading-[1.9] max-w-md mb-12" style={{ color:TITAN, opacity:0.78 }}>
+                <p className="text-[1.08rem] leading-[1.9] max-w-md mb-12" style={{ color:TITAN, opacity:0.88 }}>
                   Every client receives a dedicated digital workspace — real-time transparency on
                   compliance status, document custody, and site activity. Nothing circulates informally.
                 </p>
@@ -637,7 +673,7 @@ export default function Prototype() {
               className="flex flex-col items-center justify-center text-center px-[16%] py-16 lg:py-20"
               style={{
                 borderBottom:"1px solid rgba(178,168,152,0.07)",
-                background: i%2===0 ? "#080a0d" : "#09090f",
+                background: i%2===0 ? "#080a0d" : "#0d0f16",
               }}
               initial={{ opacity:0 }}
               whileInView={{ opacity:1 }}
@@ -664,7 +700,7 @@ export default function Prototype() {
               {/* Body — directly under title, no divider in between */}
               <Fade delay={0.22}>
                 <p className="text-[1.05rem] leading-[1.88] max-w-md mx-auto text-center"
-                  style={{ color:TITAN, opacity:0.72 }}>
+                  style={{ color:TITAN, opacity:0.88 }}>
                   {body}
                 </p>
               </Fade>
@@ -720,7 +756,7 @@ export default function Prototype() {
                   [{text:"confidential",color:TITAN}],
                   [{text:"consultation.",color:CREAM}],
                 ]} />
-              <p className="text-[1.08rem] leading-[1.9] max-w-sm mb-10" style={{ color:TITAN, opacity:0.75 }}>
+              <p className="text-[1.08rem] leading-[1.9] max-w-sm mb-10" style={{ color:TITAN, opacity:0.88 }}>
                 Share only what is necessary. Full document exchange happens after an engagement is
                 accepted and secure client access is issued.
               </p>
