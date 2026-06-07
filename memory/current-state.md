@@ -21,17 +21,23 @@ The goal is to let a new agent understand the current state in under two minutes
 
 **Domain:** `https://www.jamesroman.la`
 
-**Approved production deployment:** `dpl_6t7vzRxwcaEysXg1bVP9o3kqZpLi`
+**Active production deployment:** `dpl_3yFwfQ7GgDdeDbx4w9tuTEMpQryZ`
 
-**Rollback target:**
+**Production URL:** `https://jr-advisory-nw2vs1ok0-roman-2757s-projects.vercel.app`
+
+**Deployed:** 2026-06-07T06:31:24Z from `hotfix/remove-clerk` @ `3b4ba53`
+
+**Rollback target:** `dpl_6t7vzRxwcaEysXg1bVP9o3kqZpLi` (pre-hotfix baseline)
 
 ```bash
-npx vercel rollback https://jr-advisory-n0pqlh56f-roman-2757s-projects.vercel.app --yes --timeout 3m
+# Emergency rollback if needed:
+npx vercel rollback dpl_6t7vzRxwcaEysXg1bVP9o3kqZpLi --yes --timeout 3m
+npx vercel alias set jr-advisory-l925rkcj8-roman-2757s-projects.vercel.app www.jamesroman.la
 ```
 
 **Production status:**
 
-- Production is frozen by default.
+- Production is live and stable. All routes verified 200.
 - No production deploy without Roman's explicit approval in the current thread.
 - Prototype2/public visual experience must remain unchanged unless Roman explicitly approves a visual change.
 
@@ -82,34 +88,28 @@ Current known active foundation areas:
 
 ## Current Verification Baseline
 
-Latest known baseline:
+Latest known baseline (hotfix branch, pre-deploy):
 
 ```bash
-npm run prototype:test
-# 18 files, 58 tests passed
+npm run build
+# passed (Next.js 15, no type errors)
 
-npm run prototype:build
-# passed
+npm test
+# 36/37 passing (1 pre-existing DATABASE_URL env failure — not a regression)
 
-npx supabase db reset
-# passed
-
-npx supabase test db
-# 1 file, 20 tests, PASS
-
-npm run staging:check
-# passed, Stripe warnings only
+curl https://www.jamesroman.la{/,/sign-in,/sign-up,/prototype2,/prototype2/contact,/portal}
+# all → 200
 ```
 
 ---
 
 ## Current Blockers / Open Items
 
-- No production deploy is approved.
-- Stripe payment flow remains non-live and must stay in staging/test mode until legal/payment review and explicit approval.
+- Stripe payment flow remains non-live — must stay in staging/test mode until legal/payment review and explicit approval.
 - Staging Stripe test-mode keys not yet configured.
 - Sentry DSN not yet set — monitoring is installed but inactive.
 - Counsel approval required for retention/CPRA language before real client data is stored.
+- `consultations/route.test.ts` (valid intake POST) requires `DATABASE_URL` in test env — pre-existing gap.
 
 ---
 
