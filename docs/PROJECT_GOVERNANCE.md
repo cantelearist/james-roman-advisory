@@ -7,11 +7,7 @@ Status: Active
 
 ---
 
-All contributors must read:
-- [PROJECT_GOVERNANCE.md](./PROJECT_GOVERNANCE.md)
-- [MULTI_AGENT_PROTOCOL.md](./MULTI_AGENT_PROTOCOL.md)
-
-before beginning work.
+All contributors must read [`MULTI_AGENT_PROTOCOL.md`](./MULTI_AGENT_PROTOCOL.md) before beginning work.
 
 ---
 
