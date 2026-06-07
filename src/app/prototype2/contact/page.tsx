@@ -59,7 +59,7 @@ export default function Prototype2ContactPage() {
             className="border-t pt-8 lg:border-l lg:border-t-0 lg:pl-12 lg:pt-0"
             style={{ borderColor:"rgba(178,168,152,0.13)" }}
           >
-            <ConsultationForm variant="integrated" />
+            <ConsultationForm />
           </div>
         </section>
       </div>
