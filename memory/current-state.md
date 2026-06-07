@@ -2,7 +2,7 @@
 
 **Project:** James Roman Advisory  
 **Status:** Active  
-**Last Updated:** 2026-06-06  
+**Last Updated:** 2026-06-07  
 **Owner:** Roman Cantelearist  
 
 ---
@@ -21,7 +21,7 @@ The goal is to let a new agent understand the current state in under two minutes
 
 **Domain:** `https://www.jamesroman.la`
 
-**Approved production deployment:** `dpl_6t7vzRxwcaEysXg1bVP9o3kqZpLi`
+**Approved production deployment:** `dpl_3yFwfQ7GgDdeDbx4w9tuTEMpQryZ`
 
 **Rollback target:**
 
@@ -49,9 +49,9 @@ Never promote this deployment.
 
 **Active staging branch:** `staging-secure-office-foundation`
 
-**Staging preview:** `https://jr-advisory-lxme9mhnb-roman-2757s-projects.vercel.app`
+**Staging preview:** `https://jr-advisory-n92x7bmb7-roman-2757s-projects.vercel.app`
 
-**Staging deployment ID:** `dpl_4d2CVJSmag8q6Z9PZcz5gFb4dnHU`
+**Staging deployment ID:** `dpl_3cSp8YtziGa2K74a63G14YFVtM8C`
 
 **Staging access:** Protected by Vercel Authentication — 401 without authorization.
 
