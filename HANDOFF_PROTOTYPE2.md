@@ -8,6 +8,20 @@ Branch: `prototype/liquid-glass-home`
 
 Created a new `/prototype2` route using the approved new structure and old visual language. The page preserves the restrained dark editorial brand direction, removes the Operating Principles section, makes Private Office copy dark over the Malibu shoreline image, and keeps the consultation form on a separate route with a solid dark navy background.
 
+## Pending Documentation
+
+The following Tier 2 governance documents are referenced in `MULTI_AGENT_PROTOCOL.md` but are not yet complete. They exist as stubs only. No agent should make structural, security, or feature decisions that depend on their content until they are marked Active.
+
+| Document | Path | Status |
+|----------|------|--------|
+| Architecture | `docs/ARCHITECTURE.md` | Stub — pending |
+| Security Model | `docs/SECURITY_MODEL.md` | Stub — pending |
+| Matter Lifecycle | `docs/MATTER_LIFECYCLE.md` | Stub — pending |
+
+Until these are complete, agents must escalate decisions in those domains to Roman rather than proceeding on assumptions.
+
+---
+
 ## Routes
 
 - Local home: `http://localhost:3021/prototype2`
