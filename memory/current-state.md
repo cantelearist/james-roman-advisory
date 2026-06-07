@@ -2,7 +2,7 @@
 
 **Project:** James Roman Advisory  
 **Status:** Active  
-**Last Updated:** 2026-06-06  
+**Last Updated:** 2026-06-07  
 **Owner:** Roman Cantelearist  
 
 ---
@@ -21,7 +21,7 @@ The goal is to let a new agent understand the current state in under two minutes
 
 **Domain:** `https://www.jamesroman.la`
 
-**Active production deployment:** `dpl_3yFwfQ7GgDdeDbx4w9tuTEMpQryZ`
+**Active production deployment:** `dpl_5pfCVGA2rn8awWapemmqfGNk7RQ3`
 
 **Production URL:** `https://jr-advisory-nw2vs1ok0-roman-2757s-projects.vercel.app`
 
