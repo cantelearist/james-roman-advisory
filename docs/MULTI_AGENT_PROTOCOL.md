@@ -1,164 +1,446 @@
 # Multi-Agent Protocol
 
-**Version:** 1.0  
+**Version:** 1.1  
 **Status:** Active  
 **Owner:** Roman Cantelearist  
 **Last Updated:** 2026-06-06
 
 ---
 
-## Purpose
+# Purpose
 
-This document governs how multiple AI agents — Claude, ChatGPT, Codex, Gemini, or any future model — collaborate on this project without creating conflicts, duplicate work, or state drift.
+This document governs how multiple AI agents, developers, contractors, and technical contributors collaborate on the James Roman Advisory platform without creating conflicts, duplicate work, deployment mistakes, security regressions, or state drift.
 
-The rule is simple: **the docs are the system of record, not the chat history.**
+The rule is simple:
 
-Every agent session that doesn't end with updated docs has produced work that may not survive the next session.
+**The repository documents are the system of record.**
 
----
-
-## The Source of Truth Stack
-
-Read these files in this order at the start of every session, regardless of which model you are:
-
-| Priority | File | Purpose |
-|----------|------|---------|
-| 1 | `docs/PROJECT_GOVERNANCE.md` | North star. What this project is and why. |
-| 2 | `AGENTS.md` | Rules, constraints, and security boundaries. |
-| 3 | `CLAUDE.md` | Quick reference, verification baseline, rollback commands. |
-| 4 | `HANDOFF_PROTOTYPE2.md` | Full deployment and visual history. Current blockers. |
-| 5 | `docs/operations/release-log.md` | What has been deployed, when, and by whom. |
-| 6 | `docs/operations/production-hotfix-policy.md` | When and how to fix production. |
-| 7 | `docs/operations/production-readiness.md` | Pre-deployment checklist. |
-
-If these files conflict with your chat context or your prior understanding, **the files win.**
+Chat history is temporary.
+Documentation is authoritative.
 
 ---
 
-## Agent Lane Assignments
+# Authority Hierarchy
 
-Each agent type has a lane. Stay in yours unless Roman reassigns.
+When documents conflict, the following hierarchy applies:
 
-| Agent | Primary Lane | Examples |
-|-------|-------------|---------|
-| **Claude** (Cowork / Code) | Architecture, ops, governance, documentation, security review, complex debugging | Writing policies, reviewing diffs, planning branches, multi-file changes |
-| **Codex** | Targeted code generation, file-level edits, test writing | Implementing a specific function, writing a test, refactoring a module |
-| **ChatGPT** | Review, writing, strategy, brief preparation | Reviewing copy, drafting client-facing content, business analysis |
-| **Gemini** | Research, competitive analysis, document synthesis | Market research, summarizing long documents, cross-referencing sources |
+| Priority | Document Type | Authority |
+|----------|---------------|-----------|
+| 1 | Project Governance | Highest |
+| 2 | Architecture Documents | System design |
+| 3 | Security Documents | Security controls |
+| 4 | Operations Documents | Deployment and workflow |
+| 5 | Handoff Documents | Current state |
+| 6 | Chat History | Lowest |
 
-Agents do not cross lanes without explicit instruction from Roman in the current thread.
+Example:
+If a deployment recommendation in chat conflicts with `PROJECT_GOVERNANCE.md`, the governance document wins.
+If a handoff note conflicts with the security model, the security model wins.
 
----
-
-## Session Start Protocol
-
-Before doing any work, every agent must:
-
-1. **Read the source of truth stack** (table above, in order).
-2. **Check `docs/operations/release-log.md`** — confirm what the last deployment was and whether anything is in-flight.
-3. **Check `HANDOFF_PROTOTYPE2.md`** — confirm current blockers and staging/production state.
-4. **Identify your branch** — confirm which branch you're working on and that the worktree is clean.
-5. **Run the verification baseline** from `CLAUDE.md` if you're about to touch the codebase.
-
-Do not begin work if:
-- The release log shows a deployment in-flight with no resolution entry.
-- The worktree has uncommitted changes you didn't create in this session.
-- The current branch is unclear.
-
-Ask Roman to clarify before proceeding.
+Agents must never override higher-priority documents based on memory, assumptions, or prior conversations.
 
 ---
 
-## Session End Protocol
+# Source of Truth Stack
 
-Before closing any session, every agent must:
+Every session begins by reading these files in order.
 
-1. **Commit all changes** — no work lives in an uncommitted state.
-2. **Update `docs/operations/release-log.md`** — add an entry if any deployment, hotfix, or significant commit occurred.
-3. **Update `HANDOFF_PROTOTYPE2.md`** — if the state of the project changed (new deployment, resolved blocker, new blocker, visual change), update the relevant section.
-4. **State what's pending** — if the session ends with work unfinished, note it clearly in the handoff doc under "Current Blockers."
+## Tier 1 — Governance
 
-The session is not complete until the docs reflect the current state.
-
----
-
-## Branch Discipline
-
-| Rule | Detail |
-|------|--------|
-| One task per branch | Each branch addresses one thing. Do not bundle unrelated changes. |
-| Hotfixes branch from production baseline | Never branch a hotfix from staging. See `docs/operations/production-hotfix-policy.md`. |
-| No commits to `main` directly | All changes go through a branch and are approved by Roman before merge. |
-| No deployment without Roman's approval | Roman must say "approved — deploy" in the current thread before any production deployment. |
-| Staging and production are separate | Different Supabase projects, different Vercel deployments, different env vars. Never cross-contaminate. |
-
----
-
-## Production Rules (Non-Negotiable)
-
-These apply to every agent, every session:
-
-- **Do not run `vercel deploy --prod`.**
-- **Do not run `vercel promote`.**
-- **Do not deploy to production without Roman's explicit approval in the current thread.**
-- **Do not push to origin/main without approval.**
-- **Do not bypass MFA, RLS, access controls, or audit logging — not even temporarily.**
-- **Do not expose secrets. Do not print env vars.**
-- **Do not use the service-role Supabase key in client or browser code.**
-- **BAD deployment — never promote:** `dpl_44EVkKaQFs4buprP8dF3nXMC34SC`
-
-When in doubt: do not deploy. Use staging. Verify. Ask Roman.
-
----
-
-## How Each Platform Loads Context
-
-### Claude (Cowork / Code)
-Reads `CLAUDE.md` and `AGENTS.md` automatically at session start. No manual loading required. The docs are the handoff.
-
-### Codex
-Reads `AGENTS.md` automatically at session start. Ensure `AGENTS.md` is present at the repo root and up to date.
-
-### ChatGPT
-No automatic file loading. At session start, paste or upload:
 1. `docs/PROJECT_GOVERNANCE.md`
-2. `HANDOFF_PROTOTYPE2.md`
-3. `docs/operations/release-log.md` (last 2–3 entries)
 
-Then state which lane and task you're delegating.
-
-### Gemini
-Same as ChatGPT — upload files manually at session start. Same three files minimum.
-
----
-
-## Conflict Resolution
-
-If two agents have worked on the same area and produced conflicting output:
-
-1. **The committed version wins.** Uncommitted work is not authoritative.
-2. **The more recent commit wins** — unless it touches a production-protected area without approval.
-3. **Roman resolves all conflicts** involving production deployments, visual changes, or security boundaries. No agent resolves these unilaterally.
-4. **When unsure, stop and ask Roman.** Do not guess your way through a conflict.
+Purpose:
+- Mission
+- Philosophy
+- Constraints
+- Final decision rules
 
 ---
 
-## Visual Constitution (All Agents)
+## Tier 2 — Architecture
 
-No change to the public Prototype2 experience — visuals, layout, typography, animations, founder images — may be made by any agent without Roman's explicit approval.
+2. `docs/ARCHITECTURE.md`
+3. `docs/SECURITY_MODEL.md`
+4. `docs/MATTER_LIFECYCLE.md`
 
-A feature that is functionally correct but visually wrong is not complete.
-
-The standard: a design change is only acceptable if it increases (or does not reduce) perceived calmness, discretion, competence, and speed.
+Purpose:
+- System structure
+- Security design
+- Workflow model
 
 ---
 
-## Related Documents
+## Tier 3 — Operational State
 
-- [PROJECT_GOVERNANCE.md](./PROJECT_GOVERNANCE.md)
-- [AGENTS.md](../AGENTS.md)
-- [CLAUDE.md](../CLAUDE.md)
-- [HANDOFF_PROTOTYPE2.md](../HANDOFF_PROTOTYPE2.md)
-- [release-log.md](./operations/release-log.md)
-- [production-hotfix-policy.md](./operations/production-hotfix-policy.md)
-- [production-readiness.md](./operations/production-readiness.md)
+5. `AGENTS.md`
+6. `CLAUDE.md`
+7. `HANDOFF_PROTOTYPE2.md`
+
+Purpose:
+- Current state
+- Branch state
+- Active work
+- Current blockers
+
+---
+
+## Tier 4 — Deployment History
+
+8. `docs/operations/release-log.md`
+9. `docs/operations/release-workflow.md`
+10. `docs/operations/production-hotfix-policy.md`
+11. `docs/operations/production-readiness.md`
+
+Purpose:
+- Deployment history
+- Release process
+- Production rules
+
+---
+
+# If Documents Conflict
+
+The higher-priority document wins.
+
+Never attempt to reconcile conflicting instructions through assumptions.
+
+Escalate to Roman.
+
+---
+
+# Agent Lane Assignments
+
+Each agent has a primary operating lane.
+
+Stay inside your lane unless Roman explicitly reassigns work.
+
+| Agent | Primary Responsibility |
+|-------|------------------------|
+| Claude | Architecture, operations, governance, security review, debugging |
+| Codex | Code implementation, testing, refactoring |
+| ChatGPT | Review, writing, strategy, planning, documentation |
+| Gemini | Research, synthesis, market intelligence |
+
+Lane ownership exists to reduce duplicated work and conflicting edits.
+
+---
+
+# Session Start Protocol
+
+Before any work begins:
+
+## Step 1
+
+Read the Source of Truth Stack.
+
+## Step 2
+
+Review:
+```text
+docs/operations/release-log.md
+```
+
+Confirm:
+- latest deployment
+- active deployment status
+- unresolved incidents
+
+## Step 3
+
+Review:
+```text
+HANDOFF_PROTOTYPE2.md
+```
+
+Confirm:
+- blockers
+- active branches
+- environment state
+
+## Step 4
+
+Confirm branch and worktree status.
+
+Required:
+```bash
+git status
+git branch --show-current
+```
+
+Do not proceed if:
+- unknown changes exist
+- branch purpose is unclear
+- deployment state is unclear
+
+Ask Roman.
+
+## Step 5
+
+Run verification baseline if touching code.
+
+---
+
+# Session End Protocol
+
+Before ending any session:
+
+## Commit Work
+
+No work should remain exclusively in chat.
+
+Commit all completed changes.
+
+## Update Release Log
+
+If deployment, rollback, production change, or operational milestone occurred:
+
+Update:
+```text
+docs/operations/release-log.md
+```
+
+## Update Handoff
+
+If project state changed:
+
+Update:
+```text
+HANDOFF_PROTOTYPE2.md
+```
+
+## Document Pending Work
+
+Record:
+- unfinished tasks
+- blockers
+- risks
+- next recommended actions
+
+A session is not complete until documentation reflects reality.
+
+---
+
+# Branch Discipline
+
+## One Task Per Branch
+
+Branches exist for a single objective.
+
+Examples:
+```text
+feature/client-messaging
+hotfix/sign-in-error
+staging/auth-mfa
+```
+
+Avoid mixed-purpose branches.
+
+---
+
+## Hotfix Branching
+
+Hotfixes always branch from:
+- current approved production baseline
+
+Never from:
+- staging
+- feature branches
+- experimental branches
+
+---
+
+## Main Protection
+
+Never commit directly to:
+```text
+main
+```
+
+Without Roman's approval.
+
+---
+
+# Production Rules
+
+These rules are non-negotiable.
+
+Never:
+- run `vercel deploy --prod`
+- run `vercel promote`
+- bypass MFA
+- bypass RLS
+- bypass audit logging
+- bypass signed URL controls
+- expose secrets
+- print environment variables
+
+Never promote deployment:
+```text
+dpl_44EVkKaQFs4buprP8dF3nXMC34SC
+```
+
+Production requires explicit approval from Roman in the current thread.
+
+---
+
+# Emergency Production Incidents
+
+If production becomes unavailable or actively impacts client access:
+
+## Priority Order
+
+1. Restore service.
+2. Preserve security.
+3. Restore known-good state.
+4. Document actions.
+5. Notify Roman.
+
+Emergency response is not a feature-development opportunity.
+
+Do not:
+- refactor
+- redesign
+- upgrade packages
+- add features
+
+during incident response.
+
+Restore stability first.
+
+---
+
+# Environment Model
+
+Only three environments exist:
+```text
+prototype
+staging
+production
+```
+
+No additional naming schemes should be introduced.
+
+---
+
+# Visual Constitution
+
+Applies to every contributor.
+
+No change may reduce:
+- visual calmness
+- perceived discretion
+- perceived competence
+- speed
+
+Prototype2 visuals are protected.
+
+No visual modification occurs without Roman's approval.
+
+---
+
+# Matter-Centric Model
+
+The platform revolves around:
+```text
+Relationship
+↓
+Matter
+↓
+Document
+```
+
+Future features should attach to this model.
+
+Avoid disconnected feature silos.
+
+---
+
+# Matter Lifecycle
+
+Approved lifecycle:
+```text
+Consultation Requested
+↓
+Consultation Scheduled
+↓
+Consultation Completed
+↓
+Proposal Sent
+↓
+Engaged
+↓
+Assessment
+↓
+Remediation Oversight
+↓
+Monitoring
+↓
+Completed
+↓
+Archived
+```
+
+Future CRM, Office, Messaging, Audit, and Billing features should derive from this lifecycle whenever possible.
+
+---
+
+# How Platforms Load Context
+
+## Claude
+
+Automatically reads:
+- CLAUDE.md
+- AGENTS.md
+
+---
+
+## Codex
+
+Automatically reads:
+- AGENTS.md
+
+---
+
+## ChatGPT
+
+Upload:
+1. PROJECT_GOVERNANCE.md
+2. HANDOFF_PROTOTYPE2.md
+3. release-log.md (latest entries)
+
+---
+
+## Gemini
+
+Upload:
+1. PROJECT_GOVERNANCE.md
+2. HANDOFF_PROTOTYPE2.md
+3. release-log.md (latest entries)
+
+---
+
+# Conflict Resolution
+
+If multiple agents disagree:
+
+1. Committed code wins.
+2. More recent approved commit wins.
+3. Governance beats implementation.
+4. Security beats convenience.
+5. Roman resolves final disputes.
+
+When uncertain:
+
+Stop.
+
+Ask Roman.
+
+---
+
+# Final Rule
+
+The goal is not to build software.
+
+The goal is to build trust.
+
+Software is merely one of the tools used to achieve it.
