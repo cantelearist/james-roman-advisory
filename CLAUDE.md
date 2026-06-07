@@ -14,13 +14,13 @@
 
 Before starting any task, read these in order:
 
-1. `HANDOFF_PROTOTYPE2.md`
-2. `docs/operations/release-log.md`
-3. `docs/superpowers/plans/2026-06-05-production-foundation-sprint-plan.md`
-4. `docs/operations/security-model.md`
-5. `docs/operations/data-retention-policy-draft.md`
-6. `docs/operations/document-scanning.md`
-7. `docs/operations/audit-logging.md`
+1. `docs/PROJECT_GOVERNANCE.md` — mission, philosophy, final decision rules
+2. `docs/MULTI_AGENT_PROTOCOL.md` — authority hierarchy, agent lanes, session protocol, production rules
+3. `docs/ARCHITECTURE.md` — system structure (stub — pending)
+4. `docs/SECURITY_MODEL.md` — security design (stub — pending)
+5. `docs/MATTER_LIFECYCLE.md` — workflow model (stub — pending)
+6. `HANDOFF_PROTOTYPE2.md` — current state, blockers, deployment history
+7. `docs/operations/release-log.md` — what has been deployed and when
 
 ## Memory Index
 
@@ -81,11 +81,17 @@ npm run staging:check
 - Update `HANDOFF_PROTOTYPE2.md` and `docs/operations/release-log.md`.
 - Clearly state what passed, what failed, and what remains blocked.
 
-## Operations Docs
+## Governance and Operations Docs
 
 ```
-docs/operations/
-├── production-hotfix-policy.md   — rules and process for hotfixes
-├── production-readiness.md       — pre-deployment checklist
-└── release-log.md                — system of record for all production deployments
+docs/
+├── PROJECT_GOVERNANCE.md         — mission, philosophy, final decision rules
+├── MULTI_AGENT_PROTOCOL.md       — agent lanes, session protocol, production rules
+├── ARCHITECTURE.md               — system structure (stub — pending)
+├── SECURITY_MODEL.md             — security design (stub — pending)
+├── MATTER_LIFECYCLE.md           — workflow model (stub — pending)
+└── operations/
+    ├── production-hotfix-policy.md   — rules and process for hotfixes
+    ├── production-readiness.md       — pre-deployment checklist
+    └── release-log.md                — system of record for all production deployments
 ```
