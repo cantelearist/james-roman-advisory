@@ -46,6 +46,9 @@ export default function PortalPreview() {
             <BrandLogo priority className="h-9" />
           </Link>
           <div className="flex items-center gap-3">
+            <ButtonLink href="/portal/matters" size="sm" variant="ghost">
+              Engagements
+            </ButtonLink>
             <ButtonLink href="/portal/vault" size="sm">
               <FileLock2 data-icon="inline-start" />
               Document Vault

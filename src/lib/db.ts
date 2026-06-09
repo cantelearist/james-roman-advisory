@@ -31,6 +31,15 @@ export type DocumentCategory =
 
 export type AccessEventType = "upload" | "download" | "view" | "delete";
 
+export type MatterEventType =
+  | "created"
+  | "status_changed"
+  | "note_added"
+  | "document_uploaded"
+  | "document_downloaded"
+  | "document_deleted"
+  | "client_access_granted";
+
 export function getDb() {
   const url = process.env.DATABASE_URL;
   if (!url) throw new Error("DATABASE_URL is not set");
@@ -68,21 +77,23 @@ export async function ensureConsultationsTable() {
 }
 
 /**
- * Ensures all vault-related tables exist.
+ * Ensures all vault and matter management tables exist.
  * Safe to call on every request — uses CREATE TABLE IF NOT EXISTS.
  */
 export async function ensureVaultTables() {
   const sql = getDb();
 
-  // clients — one row per client, keyed to their Clerk user ID
+  // clients — one row per client; clerk_user_id nullable (set after invite accepted)
   await sql`
     CREATE TABLE IF NOT EXISTS clients (
       id            TEXT PRIMARY KEY DEFAULT gen_random_uuid()::TEXT,
-      clerk_user_id TEXT UNIQUE NOT NULL,
+      clerk_user_id TEXT UNIQUE,
       name          TEXT NOT NULL,
-      email         TEXT NOT NULL UNIQUE,
+      email         TEXT,
       phone         TEXT,
-      created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      notes         TEXT,
+      created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `;
 
@@ -109,8 +120,22 @@ export async function ensureVaultTables() {
       type        TEXT NOT NULL DEFAULT 'other',
       status      TEXT NOT NULL DEFAULT 'intake',
       notes       TEXT,
+      created_by  TEXT,
       created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
+
+  // matter_events — activity timeline for each matter
+  await sql`
+    CREATE TABLE IF NOT EXISTS matter_events (
+      id          TEXT PRIMARY KEY DEFAULT gen_random_uuid()::TEXT,
+      matter_id   TEXT NOT NULL REFERENCES matters(id) ON DELETE CASCADE,
+      user_id     TEXT NOT NULL,
+      event_type  TEXT NOT NULL,
+      content     TEXT,
+      metadata    JSONB,
+      created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `;
 
@@ -145,6 +170,33 @@ export async function ensureVaultTables() {
   `;
 }
 
+/** Log a matter timeline event. Fire-and-forget — does not throw. */
+export async function logMatterEvent(opts: {
+  matterId: string;
+  userId: string;
+  eventType: MatterEventType;
+  content?: string;
+  metadata?: Record<string, unknown>;
+}) {
+  try {
+    const sql = getDb();
+    const id = crypto.randomUUID();
+    await sql`
+      INSERT INTO matter_events (id, matter_id, user_id, event_type, content, metadata)
+      VALUES (
+        ${id},
+        ${opts.matterId},
+        ${opts.userId},
+        ${opts.eventType},
+        ${opts.content ?? null},
+        ${opts.metadata ? JSON.stringify(opts.metadata) : null}
+      )
+    `;
+  } catch {
+    console.error("matter_event.log.failed", opts);
+  }
+}
+
 /** Log a file access event. Fire-and-forget — does not throw. */
 export async function logFileAccess(opts: {
   documentId: string;
@@ -161,7 +213,6 @@ export async function logFileAccess(opts: {
       VALUES (${id}, ${opts.documentId}, ${opts.userId}, ${opts.eventType}, ${opts.ipAddress ?? null}, ${opts.userAgent ?? null})
     `;
   } catch {
-    // never throw from audit logging — log to console instead
     console.error("audit.log.failed", opts);
   }
 }
