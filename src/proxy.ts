@@ -1,5 +1,37 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
+
+// ─── Staging basic-auth gate ──────────────────────────────────────────────────
+
+const STAGING_HOSTNAMES = ["staging.jamesroman.la"];
+
+function stagingBasicAuth(req: NextRequest): NextResponse | null {
+  const host = req.headers.get("host") ?? "";
+  if (!STAGING_HOSTNAMES.some((h) => host === h || host.startsWith(`${h}:`))) {
+    return null; // not a staging request — skip
+  }
+
+  const password = process.env.STAGING_PASSWORD;
+  if (!password) return null; // env var not set — fail open (shouldn't happen in staging)
+
+  const authHeader = req.headers.get("authorization") ?? "";
+  if (authHeader.startsWith("Basic ")) {
+    const decoded = atob(authHeader.slice(6));
+    // Accept any username, check password only
+    const colonIdx = decoded.indexOf(":");
+    const provided = colonIdx >= 0 ? decoded.slice(colonIdx + 1) : decoded;
+    if (provided === password) return null; // authenticated — pass through
+  }
+
+  return new NextResponse("Staging access restricted.", {
+    status: 401,
+    headers: {
+      "WWW-Authenticate": 'Basic realm="JRA Staging", charset="UTF-8"',
+      "Content-Type": "text/plain",
+    },
+  });
+}
 
 // ─── Route matchers ───────────────────────────────────────────────────────────
 
@@ -29,6 +61,10 @@ const isAdminRoute = createRouteMatcher(["/portal/admin(.*)"]);
 // ─── Middleware (Turbopack proxy export) ──────────────────────────────────────
 
 export const proxy = clerkMiddleware(async (auth, req) => {
+  // Staging gate runs before Clerk — returns 401 if not authenticated
+  const stagingBlock = stagingBasicAuth(req);
+  if (stagingBlock) return stagingBlock;
+
   // Public routes pass through immediately
   if (isPublicRoute(req)) return NextResponse.next();
 
