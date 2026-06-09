@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
-import { ArrowRight, Plus, X, ChevronRight, FileText } from "lucide-react";
+import { ArrowRight, Plus, X, ChevronRight, FileText, Shield } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type MatterStatus =
@@ -457,12 +457,20 @@ export default function MattersPage() {
             Engagement Dashboard
           </span>
         </div>
-        <button onClick={() => setShowModal(true)}
-          className="flex items-center gap-2 border px-4 py-2 text-[0.76rem] uppercase tracking-[0.2em] hover:opacity-100 transition-opacity"
-          style={{ borderColor: "rgba(201,181,138,0.25)", color: GOLD, opacity: 0.85 }}>
-          <Plus size={13} />
-          New engagement
-        </button>
+        <div className="flex items-center gap-3">
+          <Link href="/portal/admin"
+            className="flex items-center gap-1.5 text-[0.68rem] uppercase tracking-[0.16em] opacity-40 hover:opacity-75 transition-opacity"
+            style={{ color: TITAN }}>
+            <Shield size={11} />
+            Admin
+          </Link>
+          <button onClick={() => setShowModal(true)}
+            className="flex items-center gap-2 border px-4 py-2 text-[0.76rem] uppercase tracking-[0.2em] hover:opacity-100 transition-opacity"
+            style={{ borderColor: "rgba(201,181,138,0.25)", color: GOLD, opacity: 0.85 }}>
+            <Plus size={13} />
+            New engagement
+          </button>
+        </div>
       </header>
 
       <div className="px-8 py-10 max-w-7xl mx-auto">
