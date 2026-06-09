@@ -10,6 +10,8 @@ const isPublicRoute = createRouteMatcher([
   "/sign-in(.*)",
   "/sign-up(.*)",
   "/mfa-required(.*)",
+  "/robots.txt",
+  "/sitemap.xml",
   "/api/consultations(.*)",
   "/api/seed(.*)",
 ]);
@@ -43,7 +45,7 @@ export const proxy = clerkMiddleware(async (auth, req) => {
   // Requires Clerk Dashboard → Configure → Sessions → Customize session token:
   //   { "role": "{{user.public_metadata.role}}" }
   // Without this template, `role` is undefined and role checks are deferred
-  // to server components (which always call currentUser() for ground truth).
+  // to server components (which always call currentUser() for ground truth).\
   const role = (sessionClaims as Record<string, unknown>)?.role as
     | string
     | undefined;
