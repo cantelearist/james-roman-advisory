@@ -1,12 +1,8 @@
 import { Resend } from "resend";
 
-// ─── Client ───────────────────────────────────────────────────────────────────
-
-const resend = new Resend(process.env.RESEND_API_KEY);
+// ─── Constants ────────────────────────────────────────────────────────────────
 
 const FROM = "James Roman Advisory <notifications@jamesroman.la>";
-const NOTIFICATION_EMAIL =
-  process.env.NOTIFICATION_EMAIL ?? "advisory@jamesroman.la";
 
 // ─── Templates ────────────────────────────────────────────────────────────────
 
@@ -160,6 +156,11 @@ export async function sendConsultationNotification(
     return;
   }
 
+  // Lazy-init so missing key never throws at module load time
+  const resend = new Resend(process.env.RESEND_API_KEY);
+  const notificationEmail =
+    process.env.NOTIFICATION_EMAIL ?? "advisory@jamesroman.la";
+
   const receivedAt = new Date().toLocaleString("en-US", {
     timeZone: "America/Los_Angeles",
     dateStyle: "long",
@@ -168,7 +169,7 @@ export async function sendConsultationNotification(
 
   const { error } = await resend.emails.send({
     from: FROM,
-    to: [NOTIFICATION_EMAIL],
+    to: [notificationEmail],
     subject: `New consultation request — ${data.referenceId}`,
     html: consultationNotificationHtml({ ...data, receivedAt }),
   });
@@ -179,7 +180,7 @@ export async function sendConsultationNotification(
   } else {
     console.info("email.sent", {
       referenceId: data.referenceId,
-      to: NOTIFICATION_EMAIL,
+      to: notificationEmail,
     });
   }
 }
