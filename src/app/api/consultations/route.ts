@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 
 import { draftLocalIntakeSummary } from "@/lib/ai/intake-summary";
-import { ensureConsultationsTable, getDb } from "@/lib/db";
+import { getDb, ensureConsultationsTable } from "@/lib/db";
+import { sendConsultationNotification } from "@/lib/email";
 import { consultationSchema, redactForAudit } from "@/lib/intake";
 
 export const runtime = "nodejs";
@@ -30,6 +31,16 @@ export async function POST(request: Request) {
       referenceId,
       audit: redactForAudit(input),
       receivedAt: new Date().toISOString(),
+    });
+
+    // Fire notification email — non-blocking; failure logged but never surfaces to client
+    void sendConsultationNotification({
+      referenceId,
+      name: input.name,
+      email: input.email,
+      market: input.market,
+      matter: input.matter,
+      message: input.message,
     });
 
     return NextResponse.json(
