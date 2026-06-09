@@ -24,7 +24,7 @@ const milestones = [
   { label: "Clearance package pending", status: "Next", icon: FileText },
 ];
 
-const documents = [
+const recentDocuments = [
   "Remediation protocol redline.pdf",
   "Structural observations summary.pdf",
   "Contractor response matrix.xlsx",
@@ -45,10 +45,16 @@ export default function PortalPreview() {
           <Link href="/" aria-label="James Roman Advisory home">
             <BrandLogo priority className="h-9" />
           </Link>
-          <ButtonLink href="/" variant="ghost" size="sm">
-            <ArrowLeft data-icon="inline-start" />
-            Public site
-          </ButtonLink>
+          <div className="flex items-center gap-3">
+            <ButtonLink href="/portal/vault" size="sm">
+              <FileLock2 data-icon="inline-start" />
+              Document Vault
+            </ButtonLink>
+            <ButtonLink href="/" variant="ghost" size="sm">
+              <ArrowLeft data-icon="inline-start" />
+              Public site
+            </ButtonLink>
+          </div>
         </div>
       </header>
 
@@ -141,11 +147,19 @@ export default function PortalPreview() {
 
             <div className="grid gap-10 lg:grid-cols-2">
               <section>
-                <p className="text-[0.64rem] uppercase tracking-[0.28em] text-muted-foreground">
-                  Recent documents
-                </p>
+                <div className="flex items-center justify-between">
+                  <p className="text-[0.64rem] uppercase tracking-[0.28em] text-muted-foreground">
+                    Recent documents
+                  </p>
+                  <Link
+                    href="/portal/vault"
+                    className="text-[0.64rem] uppercase tracking-[0.2em] text-primary/70 transition-colors hover:text-primary"
+                  >
+                    Open vault →
+                  </Link>
+                </div>
                 <div className="mt-5 border-y border-primary/15">
-                  {documents.map((document) => (
+                  {recentDocuments.map((document) => (
                     <div key={document} className="record-row flex items-center gap-3 border-b border-primary/15 py-4 last:border-b-0">
                       <FileText className="size-4 text-muted-foreground" aria-hidden />
                       <span className="text-sm">{document}</span>

@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
 
 const EASE = [0.16, 1, 0.3, 1] as const;
+const SESSION_KEY = "jra_intro_seen";
 
 export function IntroSequence({ onComplete }: { onComplete: () => void }) {
   const [phase, setPhase] = useState<0 | 1 | 2 | 3 | 4>(0);
@@ -15,12 +16,27 @@ export function IntroSequence({ onComplete }: { onComplete: () => void }) {
   }, [onComplete]);
 
   useEffect(() => {
-    const t0 = setTimeout(() => setPhase(1), 300);
-    const t1 = setTimeout(() => setPhase(2), 1000);
-    const t2 = setTimeout(() => setPhase(3), 2000);
-    const t3 = setTimeout(() => { setPhase(4); onComplete(); }, 2900);
-    // Show skip button after 700ms
-    const ts = setTimeout(() => setShowSkip(true), 700);
+    // Skip intro if already seen this session
+    try {
+      if (sessionStorage.getItem(SESSION_KEY)) {
+        setPhase(4);
+        onComplete();
+        return;
+      }
+    } catch {
+      // sessionStorage unavailable (private browsing edge case) — proceed normally
+    }
+
+    // First visit — play intro then mark seen
+    const t0 = setTimeout(() => setPhase(1), 200);
+    const t1 = setTimeout(() => setPhase(2), 650);
+    const t2 = setTimeout(() => setPhase(3), 1300);
+    const t3 = setTimeout(() => {
+      setPhase(4);
+      try { sessionStorage.setItem(SESSION_KEY, "1"); } catch { /* ignore */ }
+      onComplete();
+    }, 1900);
+    const ts = setTimeout(() => setShowSkip(true), 500);
 
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") skip();
@@ -41,7 +57,7 @@ export function IntroSequence({ onComplete }: { onComplete: () => void }) {
           className="fixed inset-0 z-[200] flex items-center justify-center"
           style={{ background: "#070809" }}
           exit={{ y: "-100%" }}
-          transition={{ duration: 1.1, ease: EASE }}
+          transition={{ duration: 0.75, ease: EASE }}
           role="status"
           aria-label="Loading James Roman Advisory"
         >
@@ -74,13 +90,13 @@ export function IntroSequence({ onComplete }: { onComplete: () => void }) {
                 style={{ background: "rgba(201,181,138,0.4)" }}
                 initial={{ scaleX: 0 }}
                 animate={phase >= 1 ? { scaleX: 1 } : {}}
-                transition={{ duration: 0.9, ease: EASE }} />
+                transition={{ duration: 0.7, ease: EASE }} />
             </div>
 
             <motion.div className="flex items-center gap-3"
               initial={{ opacity: 0 }}
               animate={phase >= 1 ? { opacity: 1 } : {}}
-              transition={{ duration: 0.7, delay: 0.3, ease: EASE }}>
+              transition={{ duration: 0.6, delay: 0.2, ease: EASE }}>
               <div className="size-8 flex items-center justify-center border text-[0.6rem] tracking-widest"
                 style={{ borderColor: "rgba(201,181,138,0.35)", color: "#c9b58a" }}>
                 JR
@@ -90,7 +106,7 @@ export function IntroSequence({ onComplete }: { onComplete: () => void }) {
             <motion.div className="text-center"
               initial={{ opacity: 0, y: 8, filter: "blur(6px)" }}
               animate={phase >= 2 ? { opacity: 1, y: 0, filter: "blur(0px)" } : {}}
-              transition={{ duration: 0.9, ease: EASE }}>
+              transition={{ duration: 0.8, ease: EASE }}>
               <p className="font-heading text-[1.4rem] tracking-[0.38em] font-light"
                 style={{ color: "#ece6d6", letterSpacing: "0.38em" }}>
                 JAMES ROMAN
@@ -106,14 +122,14 @@ export function IntroSequence({ onComplete }: { onComplete: () => void }) {
                 style={{ background: "rgba(201,181,138,0.4)" }}
                 initial={{ scaleX: 0 }}
                 animate={phase >= 2 ? { scaleX: 1 } : {}}
-                transition={{ duration: 0.9, delay: 0.1, ease: EASE }} />
+                transition={{ duration: 0.8, delay: 0.1, ease: EASE }} />
             </div>
 
             <motion.p className="text-[0.5rem] tracking-[0.42em] uppercase"
               style={{ color: "#b2a898", opacity: 0.38 }}
               initial={{ opacity: 0 }}
               animate={phase >= 2 ? { opacity: 0.38 } : {}}
-              transition={{ duration: 0.8, delay: 0.5 }}>
+              transition={{ duration: 0.7, delay: 0.4 }}>
               Malibu, California
             </motion.p>
           </div>
