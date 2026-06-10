@@ -2,6 +2,7 @@ import { clerkClient, currentUser } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 
 import { getRole, isAdmin } from "@/lib/auth";
+import { ratelimit } from "@/lib/ratelimit";
 
 export const runtime = "nodejs";
 
@@ -15,6 +16,12 @@ export async function POST(req: NextRequest) {
   const role = getRole(user);
   if (!isAdmin(role)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  // Rate limit: 20 invitations per hour per admin user
+  const rl = await ratelimit("invite", user.id);
+  if (rl?.blocked) {
+    return NextResponse.json({ error: "Too many requests. Please try again later." }, { status: 429 });
   }
 
   let body: { email?: string; role?: string };

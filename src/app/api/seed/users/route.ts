@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ensureUsersTable, getDb } from "@/lib/db";
 import type { UserRole } from "@/lib/data-model";
+import { ratelimit, getClientIp } from "@/lib/ratelimit";
 
 // SECURITY: No fallback. If SEED_KEY is not set, the route is permanently locked.
 // Never add a default value here — this endpoint must fail loudly in any environment
@@ -28,6 +29,13 @@ export async function POST(req: NextRequest) {
       { error: "Seed endpoint is not configured in this environment" },
       { status: 503 }
     );
+  }
+
+  // Rate limit: 10 attempts per hour per IP (defense-in-depth; SEED_KEY is the primary gate)
+  const ip = getClientIp(req);
+  const rl = await ratelimit("seed", ip);
+  if (rl?.blocked) {
+    return NextResponse.json({ error: "Too many requests" }, { status: 429 });
   }
 
   const key = req.nextUrl.searchParams.get("key");

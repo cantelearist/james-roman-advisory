@@ -5,6 +5,7 @@ import { draftLocalIntakeSummary } from "@/lib/ai/intake-summary";
 import { getDb, ensureConsultationsTable } from "@/lib/db";
 import { sendConsultationNotification } from "@/lib/email";
 import { consultationSchema, redactForAudit } from "@/lib/intake";
+import { ratelimit, getClientIp } from "@/lib/ratelimit";
 
 export const runtime = "nodejs";
 
@@ -13,6 +14,16 @@ function makeReferenceId() {
 }
 
 export async function POST(request: Request) {
+  // Rate limit: 5 submissions per hour per IP (public endpoint — no auth required)
+  const ip = getClientIp(request);
+  const rl = await ratelimit("consultation", ip);
+  if (rl?.blocked) {
+    return NextResponse.json(
+      { message: "Too many requests. Please try again later." },
+      { status: 429 }
+    );
+  }
+
   try {
     const body = await request.json();
     const input = consultationSchema.parse(body);
