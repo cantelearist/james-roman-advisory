@@ -4,7 +4,7 @@
  *
  * Auth: Clerk session required. Clients can only access their own documents.
  */
-import { auth } from "@clerk/nextjs/server";
+import { auth, currentUser } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 
 import { ensureVaultTables, getDb, logFileAccess } from "@/lib/db";
@@ -26,11 +26,10 @@ export async function GET(request: Request, context: RouteContext) {
     await ensureVaultTables();
     const sql = getDb();
 
-    // Resolve client, then verify ownership
-    const clientRows = await sql`
-      SELECT id, role FROM users WHERE id = ${userId}
-    `;
-    const isStaff = clientRows.length > 0 && ["advisor", "admin"].includes(clientRows[0].role as string);
+    // Resolve role from Clerk (authoritative) — consistent with all other routes
+    const clerkUser = await currentUser();
+    const role = clerkUser?.publicMetadata?.role as string | undefined;
+    const isStaff = role === "admin" || role === "advisor";
 
     const docRows = await sql`
       SELECT d.id, d.name, d.original_name, d.blob_pathname, d.content_type, d.client_id
@@ -104,11 +103,10 @@ export async function DELETE(request: Request, context: RouteContext) {
     await ensureVaultTables();
     const sql = getDb();
 
-    // Only advisor/admin can delete
-    const staffRows = await sql`
-      SELECT role FROM users WHERE id = ${userId} AND role IN ('advisor', 'admin')
-    `;
-    if (staffRows.length === 0) {
+    // Only advisor/admin can delete — use Clerk (authoritative)
+    const clerkUser = await currentUser();
+    const role = clerkUser?.publicMetadata?.role as string | undefined;
+    if (role !== "admin" && role !== "advisor") {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 

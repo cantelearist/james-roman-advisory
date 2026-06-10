@@ -918,8 +918,17 @@ export default function MatterDetailPage() {
                     </div>
                     <button
                       onClick={async () => {
-                        const res = await fetch(`/api/vault/download/${doc.id}`);
-                        if (res.ok) { const { url } = await res.json(); window.open(url, "_blank"); }
+                        const res = await fetch(`/api/vault/documents/${doc.id}`);
+                        if (!res.ok) return;
+                        const blob = await res.blob();
+                        const objectUrl = URL.createObjectURL(blob);
+                        const a = document.createElement("a");
+                        a.href = objectUrl;
+                        a.download = doc.original_name;
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        URL.revokeObjectURL(objectUrl);
                       }}
                       className="opacity-35 hover:opacity-80 transition-opacity flex-shrink-0 mt-0.5">
                       <Download size={12} style={{ color: CREAM }} />
