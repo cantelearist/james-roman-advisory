@@ -2,9 +2,18 @@
  * Server-side auth helpers for James Roman Advisory.
  *
  * These run in server components and API routes — never in client components.
- * All role and MFA checks here use currentUser() which fetches from Clerk's
- * backend API, so they are always authoritative regardless of JWT template
- * configuration.
+ * All role checks use currentUser() which fetches from Clerk's backend API
+ * and is always authoritative regardless of JWT template configuration.
+ *
+ * MFA RULE (applies in both middleware and server):
+ *   A staff session is considered MFA-verified when fva[1] is not null.
+ *   fva = [primaryFactorAge, secondFactorAge] from Clerk session claims.
+ *   secondFactorAge is null when no second factor has been verified in this
+ *   session — regardless of whether the user has MFA enrolled.
+ *
+ *   Phone verification alone does NOT satisfy MFA. Staff must complete a
+ *   TOTP or hardware key second factor (Clerk authenticator app or passkey).
+ *   This matches the middleware check in proxy.ts.
  */
 
 import { auth, currentUser } from "@clerk/nextjs/server";
@@ -68,22 +77,34 @@ export async function requireAdmin() {
 }
 
 /**
- * Server component guard: ensures MFA is enrolled for the current user.
- * Call this at the top of staff-facing pages that handle sensitive data.
- * Redirects to /mfa-required if the user has no MFA method enrolled.
+ * Server component guard: verifies the current session has completed a second
+ * factor (MFA) — not just that the user has MFA enrolled.
+ *
+ * Uses fva (factor verification ages) from session claims, which is the same
+ * criterion as the middleware in proxy.ts. fva[1] is null when the second
+ * factor has not been verified in this session.
+ *
+ * Call this at the top of staff-facing pages that handle sensitive data, in
+ * addition to requireStaff(). Both checks are needed: requireStaff() enforces
+ * role, requireMFA() enforces that this particular session is second-factor
+ * verified.
  */
-export async function requireMFA() {
-  const user = await currentUser();
-  if (!user) redirect("/sign-in");
+export async function requireMFA(): Promise<string> {
+  const { userId, sessionClaims } = await auth();
+  if (!userId) redirect("/sign-in");
 
-  const hasMFA =
-    user.twoFactorEnabled === true ||
-    (user.phoneNumbers?.some((p) => p.verification?.status === "verified") ??
-      false);
+  const fva = (sessionClaims as Record<string, unknown>)?.fva as
+    | [number | null, number | null]
+    | undefined;
 
-  if (!hasMFA) redirect("/mfa-required");
+  // fva absent → MFA not configured for this user's Clerk instance, or no
+  // second factor enrolled. Either way, redirect to setup prompt.
+  // fva[1] === null → second factor not yet verified in this session.
+  if (!fva || fva[1] === null) {
+    redirect("/mfa-required");
+  }
 
-  return user;
+  return userId;
 }
 
 /**

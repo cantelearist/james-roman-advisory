@@ -1,200 +1,362 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import {
-  ArrowLeft,
-  CheckCircle2,
-  Clock3,
-  FileLock2,
-  FileText,
-  LockKeyhole,
-  MessageSquareText,
-  ReceiptText,
-} from "lucide-react";
+import { ArrowRight, FileText, Folder, Shield } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
-import { BrandLogo } from "@/components/brand-logo";
-import { ButtonLink } from "@/components/button-link";
-import { LuxuryIcon } from "@/components/luxury-icon";
-import { Progress } from "@/components/ui/progress";
-import { Separator } from "@/components/ui/separator";
+// ─── Design tokens ─────────────────────────────────────────────────────────────
+const GOLD  = "#c9b58a";
+const CREAM = "#ece6d6";
+const TITAN = "#b2a898";
+const BG    = "#0a0b0e";
+const CARD  = "#0d0f14";
 
-const milestones = [
-  { label: "Engagement accepted", status: "Complete", icon: CheckCircle2 },
-  { label: "Initial documents reviewed", status: "Complete", icon: CheckCircle2 },
-  { label: "Protocol comments issued", status: "In review", icon: Clock3 },
-  { label: "Clearance package pending", status: "Next", icon: FileText },
-];
+// ─── Types ─────────────────────────────────────────────────────────────────────
+type MatterStatus =
+  | "intake" | "assessment" | "review"
+  | "vendor_evaluation" | "oversight" | "clearance" | "closed";
 
-const recentDocuments = [
-  "Remediation protocol redline.pdf",
-  "Structural observations summary.pdf",
-  "Contractor response matrix.xlsx",
-];
+interface Matter {
+  id: string;
+  title: string;
+  type: string;
+  status: MatterStatus;
+  client_name?: string;
+  property_address?: string;
+  property_city?: string;
+  document_count: number;
+  updated_at: string;
+}
 
-const matterDetails = [
-  ["Matter type", "Remediation oversight"],
-  ["Market", "Malibu"],
-  ["Access", "MFA required"],
-  ["Circulation", "Need-to-know"],
-];
+interface Document {
+  id: string;
+  name: string;
+  category: string;
+  size_bytes: number;
+  created_at: string;
+}
 
-export default function PortalPreview() {
+// ─── Status display ─────────────────────────────────────────────────────────────
+const STATUS_CONFIG: Record<MatterStatus, { label: string; dot: string }> = {
+  intake:            { label: "Intake",            dot: "#8a8070" },
+  assessment:        { label: "Assessment",        dot: "#f59e0b" },
+  review:            { label: "Review",            dot: "#c9b58a" },
+  vendor_evaluation: { label: "Vendor Evaluation", dot: "#f97316" },
+  oversight:         { label: "Oversight",         dot: "#8b5cf6" },
+  clearance:         { label: "Clearance",         dot: "#4ade80" },
+  closed:            { label: "Closed",            dot: "#64748b" },
+};
+
+function StatusDot({ status }: { status: MatterStatus }) {
+  const cfg = STATUS_CONFIG[status] ?? { label: status, dot: TITAN };
   return (
-    <main className="min-h-screen bg-background">
-      <header className="border-b bg-background/95 backdrop-blur">
-        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-          <Link href="/" aria-label="James Roman Advisory home">
-            <BrandLogo priority className="h-9" />
+    <span className="inline-flex items-center gap-1.5">
+      <span className="size-1.5 rounded-full" style={{ background: cfg.dot }} />
+      <span className="text-[0.7rem] uppercase tracking-[0.18em]" style={{ color: cfg.dot }}>
+        {cfg.label}
+      </span>
+    </span>
+  );
+}
+
+function fmt(date: string) {
+  return new Date(date).toLocaleDateString("en-US", {
+    month: "short", day: "numeric", year: "2-digit",
+  });
+}
+
+// ─── Main ───────────────────────────────────────────────────────────────────────
+export default function PortalPage() {
+  const [matters, setMatters]   = useState<Matter[]>([]);
+  const [documents, setDocuments] = useState<Document[]>([]);
+  const [loading, setLoading]   = useState(true);
+  const [error, setError]       = useState<string | null>(null);
+
+  useEffect(() => {
+    async function load() {
+      try {
+        const [mr, dr] = await Promise.all([
+          fetch("/api/matters").then((r) => r.json()),
+          fetch("/api/vault/documents").then((r) => r.json()),
+        ]);
+        setMatters(mr.matters ?? []);
+        setDocuments(dr.documents ?? []);
+      } catch {
+        setError("Failed to load your workspace. Please refresh.");
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
+  }, []);
+
+  const activeMatters = matters.filter((m) => m.status !== "closed");
+  const recentMatter  = matters[0] ?? null; // API returns most recent first
+  const recentDocs    = documents.slice(0, 4);
+
+  return (
+    <div className="min-h-screen" style={{ background: BG, color: CREAM }}>
+
+      {/* ── Nav ─────────────────────────────────────────────────────────── */}
+      <header
+        className="px-8 py-5 flex items-center justify-between border-b"
+        style={{
+          borderColor: "rgba(201,181,138,0.1)",
+          background: "rgba(10,11,14,0.9)",
+          backdropFilter: "blur(8px)",
+        }}
+      >
+        <span
+          className="text-[0.72rem] uppercase tracking-[0.28em]"
+          style={{ color: GOLD, opacity: 0.8 }}
+        >
+          Private Office
+        </span>
+        <nav className="flex items-center gap-5">
+          <Link
+            href="/portal/matters"
+            className="text-[0.68rem] uppercase tracking-[0.18em] opacity-40 hover:opacity-80 transition-opacity"
+            style={{ color: TITAN }}
+          >
+            Engagements
           </Link>
-          <div className="flex items-center gap-3">
-            <ButtonLink href="/portal/matters" size="sm" variant="ghost">
-              Engagements
-            </ButtonLink>
-            <ButtonLink href="/portal/vault" size="sm">
-              <FileLock2 data-icon="inline-start" />
-              Document Vault
-            </ButtonLink>
-            <ButtonLink href="/" variant="ghost" size="sm">
-              <ArrowLeft data-icon="inline-start" />
-              Public site
-            </ButtonLink>
-          </div>
-        </div>
+          <Link
+            href="/portal/vault"
+            className="text-[0.68rem] uppercase tracking-[0.18em] opacity-40 hover:opacity-80 transition-opacity"
+            style={{ color: TITAN }}
+          >
+            Vault
+          </Link>
+          <Link
+            href="/portal/admin"
+            className="flex items-center gap-1 text-[0.68rem] uppercase tracking-[0.16em] opacity-30 hover:opacity-60 transition-opacity"
+            style={{ color: TITAN }}
+          >
+            <Shield size={10} />
+            Admin
+          </Link>
+        </nav>
       </header>
 
-      <section className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
-        <div className="mb-10 flex flex-wrap items-center justify-between gap-4 border-b border-primary/15 pb-6">
-          <div>
-            <p className="text-[0.64rem] uppercase tracking-[0.28em] text-muted-foreground">
-              Secure file room / preview
-            </p>
-            <h1 className="mt-4 font-heading text-5xl leading-none">Private engagement</h1>
+      <div className="px-8 py-12 max-w-5xl mx-auto">
+
+        {loading ? (
+          <div
+            className="py-32 text-center text-[0.8rem] uppercase tracking-[0.22em]"
+            style={{ color: TITAN, opacity: 0.35 }}
+          >
+            Loading…
           </div>
-          <Badge variant="secondary">Client-scoped</Badge>
-        </div>
-
-        <div className="grid gap-10 lg:grid-cols-[0.66fr_1.34fr]">
-          <aside className="lg:sticky lg:top-24 lg:self-start">
-            <div className="dossier-panel border p-5">
-              <div className="flex items-start justify-between gap-5">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">
-                    Matter status
-                  </p>
-                  <p className="mt-4 font-heading text-4xl leading-tight">Controlled review</p>
-                </div>
-                <LuxuryIcon icon={LockKeyhole} />
-              </div>
-              <div className="mt-7">
-                <div className="mb-2 flex items-center justify-between text-sm">
-                  <span>Overall progress</span>
-                  <span className="text-muted-foreground">68%</span>
-                </div>
-                <Progress value={68} />
-              </div>
-              <Separator className="my-6" />
-              <div className="grid gap-0 border-y border-primary/15 text-sm">
-                {matterDetails.map(([label, value]) => (
-                  <div key={label} className="grid grid-cols-[0.78fr_1fr] border-b border-primary/15 py-3 last:border-b-0">
-                    <span className="text-muted-foreground">{label}</span>
-                    <span>{value}</span>
-                  </div>
-                ))}
-              </div>
-              <p className="mt-6 text-sm leading-6 text-muted-foreground">
-                This preview represents the intended tone of the client portal: restrained,
-                traceable, and organized around the matter record.
-              </p>
-            </div>
-          </aside>
-
-          <div className="grid gap-10">
-            <div className="grid gap-0 border-y border-primary/15 md:grid-cols-3">
+        ) : error ? (
+          <div
+            className="py-32 text-center text-[0.8rem]"
+            style={{ color: "#f87171" }}
+          >
+            {error}
+          </div>
+        ) : (
+          <>
+            {/* ── Summary stats ─────────────────────────────────────────── */}
+            <div className="grid grid-cols-3 gap-4 mb-12">
               {[
-                { label: "Documents", value: "12", icon: FileLock2 },
-                { label: "Open requests", value: "3", icon: MessageSquareText },
-                { label: "Invoices", value: "2", icon: ReceiptText },
-              ].map((item) => {
-                const Icon = item.icon;
-                return (
-                  <div key={item.label} className="group border-b border-primary/15 p-5 md:border-b-0 md:border-r md:last:border-r-0">
-                    <LuxuryIcon icon={Icon} />
-                    <p className="mt-8 text-sm text-muted-foreground">{item.label}</p>
-                    <p className="mt-2 font-heading text-4xl">{item.value}</p>
-                  </div>
-                );
-              })}
+                {
+                  label: "Active engagements",
+                  value: activeMatters.length,
+                  accent: activeMatters.length > 0,
+                  href: "/portal/matters",
+                },
+                {
+                  label: "Documents in vault",
+                  value: documents.length,
+                  accent: false,
+                  href: "/portal/vault",
+                },
+                {
+                  label: "Total engagements",
+                  value: matters.length,
+                  accent: false,
+                  href: "/portal/matters",
+                },
+              ].map(({ label, value, accent, href }) => (
+                <Link
+                  key={label}
+                  href={href}
+                  className="block border p-6 hover:opacity-80 transition-opacity"
+                  style={{ borderColor: "rgba(201,181,138,0.1)", background: CARD }}
+                >
+                  <p
+                    className="font-heading font-light text-[2.4rem] leading-none mb-1"
+                    style={{ color: accent ? GOLD : CREAM }}
+                  >
+                    {value}
+                  </p>
+                  <p
+                    className="text-[0.68rem] uppercase tracking-[0.22em]"
+                    style={{ color: TITAN, opacity: 0.5 }}
+                  >
+                    {label}
+                  </p>
+                </Link>
+              ))}
             </div>
 
-            <section className="grid gap-5">
-              <div>
-                <p className="text-[0.64rem] uppercase tracking-[0.28em] text-muted-foreground">
-                  Milestones
+            {/* ── Empty state ────────────────────────────────────────────── */}
+            {matters.length === 0 && (
+              <div
+                className="border p-12 text-center mb-10"
+                style={{ borderColor: "rgba(201,181,138,0.08)", background: CARD }}
+              >
+                <Folder
+                  size={28}
+                  className="mx-auto mb-4 opacity-20"
+                  style={{ color: GOLD }}
+                />
+                <p
+                  className="text-[0.84rem] mb-2"
+                  style={{ color: CREAM, opacity: 0.6 }}
+                >
+                  No engagements yet.
                 </p>
-                <h2 className="mt-3 font-heading text-3xl">Advisor-controlled progress tracking.</h2>
+                <p
+                  className="text-[0.76rem]"
+                  style={{ color: TITAN, opacity: 0.4 }}
+                >
+                  Your advisor will open your first engagement here.
+                </p>
               </div>
-              <div className="border-y border-primary/15">
-                {milestones.map((milestone) => {
-                  const Icon = milestone.icon;
-                  return (
-                    <div key={milestone.label} className="record-row flex items-center justify-between gap-4 border-b border-primary/15 py-4 last:border-b-0">
-                      <div className="flex items-center gap-3">
-                        <Icon className="size-4 text-primary" aria-hidden />
-                        <span>{milestone.label}</span>
-                      </div>
-                      <Badge variant="outline">{milestone.status}</Badge>
-                    </div>
-                  );
-                })}
-              </div>
-            </section>
+            )}
 
-            <div className="grid gap-10 lg:grid-cols-2">
-              <section>
-                <div className="flex items-center justify-between">
-                  <p className="text-[0.64rem] uppercase tracking-[0.28em] text-muted-foreground">
-                    Recent documents
-                  </p>
+            {/* ── Active engagement ──────────────────────────────────────── */}
+            {recentMatter && (
+              <div className="mb-10">
+                <p
+                  className="text-[0.62rem] uppercase tracking-[0.34em] mb-4"
+                  style={{ color: GOLD, opacity: 0.6 }}
+                >
+                  Most recent engagement
+                </p>
+                <Link
+                  href={`/portal/matters/${recentMatter.id}`}
+                  className="block border p-6 hover:opacity-80 transition-opacity group"
+                  style={{ borderColor: "rgba(201,181,138,0.12)", background: CARD }}
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1 min-w-0">
+                      <p
+                        className="text-[1rem] font-light mb-1 truncate"
+                        style={{ color: CREAM }}
+                      >
+                        {recentMatter.title}
+                      </p>
+                      {recentMatter.property_address && (
+                        <p
+                          className="text-[0.76rem] mb-3 truncate"
+                          style={{ color: TITAN, opacity: 0.55 }}
+                        >
+                          {recentMatter.property_address}, {recentMatter.property_city}
+                        </p>
+                      )}
+                      <StatusDot status={recentMatter.status} />
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p
+                        className="text-[0.7rem] mb-1"
+                        style={{ color: TITAN, opacity: 0.4 }}
+                      >
+                        Updated {fmt(recentMatter.updated_at)}
+                      </p>
+                      {recentMatter.document_count > 0 && (
+                        <div className="flex items-center justify-end gap-1">
+                          <FileText
+                            size={10}
+                            style={{ color: GOLD, opacity: 0.5 }}
+                          />
+                          <p
+                            className="text-[0.68rem]"
+                            style={{ color: TITAN, opacity: 0.4 }}
+                          >
+                            {recentMatter.document_count} doc
+                            {recentMatter.document_count !== 1 ? "s" : ""}
+                          </p>
+                        </div>
+                      )}
+                      <ArrowRight
+                        size={14}
+                        className="mt-2 ml-auto opacity-20 group-hover:opacity-60 transition-opacity"
+                        style={{ color: CREAM }}
+                      />
+                    </div>
+                  </div>
+                </Link>
+
+                {matters.length > 1 && (
                   <Link
-                    href="/portal/vault"
-                    className="text-[0.64rem] uppercase tracking-[0.2em] text-primary/70 transition-colors hover:text-primary"
+                    href="/portal/matters"
+                    className="mt-3 flex items-center gap-1.5 text-[0.72rem] uppercase tracking-[0.2em] opacity-40 hover:opacity-80 transition-opacity"
+                    style={{ color: GOLD }}
                   >
-                    Open vault →
+                    View all {matters.length} engagements <ArrowRight size={11} />
                   </Link>
-                </div>
-                <div className="mt-5 border-y border-primary/15">
-                  {recentDocuments.map((document) => (
-                    <div key={document} className="record-row flex items-center gap-3 border-b border-primary/15 py-4 last:border-b-0">
-                      <FileText className="size-4 text-muted-foreground" aria-hidden />
-                      <span className="text-sm">{document}</span>
+                )}
+              </div>
+            )}
+
+            {/* ── Recent documents ───────────────────────────────────────── */}
+            {recentDocs.length > 0 && (
+              <div>
+                <p
+                  className="text-[0.62rem] uppercase tracking-[0.34em] mb-4"
+                  style={{ color: GOLD, opacity: 0.6 }}
+                >
+                  Recent documents
+                </p>
+                <div
+                  className="border overflow-hidden"
+                  style={{ borderColor: "rgba(201,181,138,0.1)" }}
+                >
+                  {recentDocs.map((doc, i) => (
+                    <div
+                      key={doc.id}
+                      className="flex items-center gap-4 px-5 py-3.5 border-b last:border-b-0"
+                      style={{
+                        borderColor: "rgba(201,181,138,0.07)",
+                        background: i % 2 === 0 ? CARD : "transparent",
+                      }}
+                    >
+                      <FileText
+                        size={13}
+                        style={{ color: GOLD, opacity: 0.45 }}
+                        className="shrink-0"
+                      />
+                      <p
+                        className="flex-1 text-[0.82rem] truncate"
+                        style={{ color: CREAM, opacity: 0.8 }}
+                      >
+                        {doc.name}
+                      </p>
+                      <p
+                        className="text-[0.68rem] shrink-0"
+                        style={{ color: TITAN, opacity: 0.35 }}
+                      >
+                        {fmt(doc.created_at)}
+                      </p>
                     </div>
                   ))}
                 </div>
-              </section>
-
-              <section>
-                <p className="text-[0.64rem] uppercase tracking-[0.28em] text-muted-foreground">
-                  Advisor thread
-                </p>
-                <div className="mt-5 flex flex-col gap-3 text-sm">
-                  <div className="border border-primary/15 bg-muted/40 p-4">
-                    Contractor response received. Advisor review is pending before any client acceptance.
-                  </div>
-                  <div className="border p-4">
-                    Client request: confirm whether clearance criteria address accessible concealed cavities.
-                  </div>
-                </div>
-              </section>
-            </div>
-
-            <section className="border-y border-primary/15 py-6">
-              <p className="max-w-3xl font-heading text-3xl leading-snug">
-                The portal should not feel like software trying to impress the client. It should feel
-                like a private record room that happens to live online.
-              </p>
-            </section>
-          </div>
-        </div>
-      </section>
-    </main>
+                {documents.length > 4 && (
+                  <Link
+                    href="/portal/vault"
+                    className="mt-3 flex items-center gap-1.5 text-[0.72rem] uppercase tracking-[0.2em] opacity-40 hover:opacity-80 transition-opacity"
+                    style={{ color: GOLD }}
+                  >
+                    View all {documents.length} documents <ArrowRight size={11} />
+                  </Link>
+                )}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
   );
 }

@@ -1,4 +1,10 @@
-const CLERK_HOST = "https://crucial-chicken-28.clerk.accounts.dev";
+// CLERK_HOST: resolved from environment at startup.
+// In development/staging, falls back to the development instance.
+// Set NEXT_PUBLIC_CLERK_FRONTEND_API_URL in Vercel env vars to override.
+const CLERK_HOST =
+  process.env.NEXT_PUBLIC_CLERK_FRONTEND_API_URL ??
+  "https://crucial-chicken-28.clerk.accounts.dev";
+
 const CLERK_IMG = "https://img.clerk.com";
 
 const csp = [

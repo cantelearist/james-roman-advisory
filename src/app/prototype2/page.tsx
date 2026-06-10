@@ -229,15 +229,17 @@ function ScrollBar({ target, label, detail, targetFill, scrollRange }: {
 
 // ─── Practice rows ────────────────────────────────────────────────────────────
 const ROWS = [
-  { n:"01", title:"Contractor Vetting",       body:"License, insurance, bonding, and field performance reviewed before any crew steps on site. Every contract questioned before it is signed." },
-  { n:"02", title:"Hazardous Material Audit", body:"Asbestos, lead, heavy metals, and airborne particulate monitoring coordinated from first assessment to final clearance letter." },
-  { n:"03", title:"Regulatory Navigation",    body:"City, county, Coastal Commission, and AQMD requirements managed so nothing falls between agencies, deadlines, or interpretations." },
-  { n:"04", title:"Concierge Closeout",       body:"Final clearance letters, document vault, and insurance reconciliation handled to full completion — not handed off to the owner alone." },
+  { n:"01", title:"Mold and Water Damage",        body:"Moisture mapping, containment strategy, clearance standards, and contractor performance reviewed before a contained problem becomes a contractor's opportunity." },
+  { n:"02", title:"Fire and Smoke Residue",       body:"Residue testing, odor pathways, cleaning protocols, and documentation tracked so restoration decisions are based on evidence, not pressure." },
+  { n:"03", title:"Asbestos and Legacy Materials", body:"Legacy materials identified, sampled, abated, and closed out with the right custody trail before renovation or rebuild work moves forward." },
+  { n:"04", title:"Indoor Air Quality and VOCs",  body:"Airborne particulate, volatile organic compounds, and post-remediation clearance coordinated with independent testing and reporting you can actually read." },
+  { n:"05", title:"Pre-Sale Diligence",           body:"Environmental and structural risk reviewed before acquisition, listing, or negotiation — before hidden liability becomes the buyer's leverage or the seller's problem." },
+  { n:"06", title:"Contractor Procurement",       body:"License, insurance, bonding, scope, and field performance reviewed before any crew steps on site. Every contract questioned before it is signed." },
 ];
 
 function PracticeSection() {
   return (
-    <section id="the-process" className="px-[12%] py-28" style={{ background:"#070a0d" }}>
+    <section id="the-practice" className="px-[12%] py-28" style={{ background:"#070a0d" }}>
       <div className="max-w-5xl mx-auto">
         <div className="mb-14">
           <Label>The Practice</Label>
@@ -246,8 +248,7 @@ function PracticeSection() {
             <RichH size="clamp(1.8rem,2.8vw,3.5rem)"
               lines={[[{text:"Advocacy,",color:CREAM}],[{text:"not",color:TITAN},{text:"remediation.",color:CREAM}]]} />
             <p className="text-[1.08rem] leading-[1.88] lg:max-w-sm lg:text-right" style={{ color:TITAN, opacity:0.88 }}>
-              We carry no hammers and file no invoices for work. Our only product is judgment
-              applied exclusively on behalf of the owner.
+              No kickbacks. No referral fees. No contractor relationships worth protecting. Our product is judgment. The client is the owner. That&apos;s the whole arrangement.
             </p>
           </div>
         </div>
@@ -308,9 +309,9 @@ export default function Prototype() {
   const heroScale   = useTransform(heroProgress, [0,1], [1,1.06]);
 
   const cornerstones = [
-    { n:"01", title:"Privacy",      color:CREAM,  body:"NDA-protected engagements. No public client list. Your property and family context stay tightly held — not filed, not referenced, not discussed." },
-    { n:"02", title:"Transparency", color:TITAN,  body:"Every test result, invoice, and report logged to your Private Office. Decisions are reconstructable. Nothing circulates informally." },
-    { n:"03", title:"Concierge",    color:GOLD,   body:"A direct line to the founding partner. We limit engagements to six projects annually — intentionally. Judgment cannot be scaled." },
+    { n:"01", title:"Privacy",      color:CREAM,  body:"NDA-protected engagements. No public client list. What you share stays tightly held — not filed, not referenced, not discussed." },
+    { n:"02", title:"Transparency", color:TITAN,  body:"Every test result, invoice, and report logged to your Private Office. Every decision is documented and traceable. You can reconstruct what happened and why — always." },
+    { n:"03", title:"Access",       color:GOLD,   body:"A direct line to the founding partner. We limit engagements to four to six projects per quarter — intentionally. Judgment cannot be scaled." },
   ];
 
   return (
@@ -335,14 +336,14 @@ export default function Prototype() {
           </Link>
           <nav className="hidden md:flex items-center gap-10 text-[0.86rem] uppercase tracking-[0.2em]"
             style={{ color:TITAN, opacity:0.7 }}>
-            {[["The Process","#the-process"],["Origin","#origin"],["Private Office","#private-office"]].map(([l,h]) => (
+            {[["The Practice","#the-practice"],["Origin","#origin"],["The Cornerstone","#the-cornerstone"],["Private Office","#private-office"]].map(([l,h]) => (
               <a key={l} href={h} className="hover:opacity-100 transition-opacity duration-400">{l}</a>
             ))}
           </nav>
           <a href="#consultation" data-cursor="inquire"
             className="hidden md:flex items-center gap-2 text-[0.86rem] uppercase tracking-[0.2em] hover:opacity-100 transition-opacity duration-400"
             style={{ color:GOLD, opacity:0.85 }}>
-            Book inquiry <ArrowRight className="size-3.5" />
+            Inquire <ArrowRight className="size-3.5" />
           </a>
         </motion.header>
 
@@ -374,17 +375,16 @@ export default function Prototype() {
                     Private advisory · Los Angeles coastal estates
                   </motion.p>
 
-                  {/* Hero h1 — larger than section headings but proportional */}
+                  {/* Hero h1 */}
                   <h1 className="font-heading font-light leading-[0.88] tracking-[-0.025em]"
                     style={{ fontSize:"clamp(3.4rem,5.5vw,6.4rem)", textShadow:"0 3px 18px rgba(0,0,0,0.6), 0 1px 4px rgba(0,0,0,0.5)" }}>
                     {[
-                      { text:"Protecting", color:CREAM,  d:0.2, block:true },
-                      { text:"The Coast",  color:TITAN,  d:0.46, block:true },
-                      { text:"We Call",    color:CREAM,  d:0.72, block:false },
-                      { text:"Home.",      color:GOLD,   d:0.88, block:false },
+                      { text:"On your side.",          color:CREAM, d:0.2,  block:true },
+                      { text:"Not the contractor's.",   color:TITAN, d:0.46, block:true },
+                      { text:"Not the insurer's.",      color:GOLD,  d:0.72, block:true },
                     ].map(({ text, color, d, block }, i) => (
                       <motion.span key={i}
-                        className={`${block?"block":""} inline-block mr-[0.18em]`}
+                        className={`${block?"block":"inline-block mr-[0.18em]"}`}
                         style={{ color, display: block ? "block" : "inline-block" }}
                         initial={{ opacity:0, y:22, filter:"blur(10px)" }}
                         animate={{ opacity:1, y:0, filter:"blur(0px)" }}
@@ -400,10 +400,9 @@ export default function Prototype() {
                     initial={{ opacity:0 }} animate={{ opacity:1 }}
                     transition={{ duration:1.1, delay:1.5, ease:EASE }}>
                     <p className="max-w-xl text-[1.08rem] leading-[1.9]" style={{ color:TITAN, opacity:0.8 }}>
-                      Ultra-discreet hazardous materials remediation advisory and structural inspection
-                      oversight for coastal estate owners where cost, liability, and pressure arrive together.
+                      When cost, liability, and pressure arrive at the same time, one thing determines the outcome: who&apos;s in the room working for you — and who isn&apos;t. We protect the property, the investment, and what it&apos;s worth when this is over.
                     </p>
-                    <a href="#the-process" data-cursor="view"
+                    <a href="#the-practice" data-cursor="view"
                       className="ml-auto flex-shrink-0 flex items-center gap-3 text-[0.86rem] uppercase tracking-[0.2em] hover:opacity-100 transition-opacity"
                       style={{ color:GOLD, opacity:0.8 }}>
                       View practice <ArrowRight className="size-3.5" />
@@ -476,14 +475,14 @@ export default function Prototype() {
             <RichH size="clamp(1.8rem,2.8vw,3.5rem)" baseDelay={0.1} className="mb-10"
               lines={[
                 [{text:"Twice in thirty years,",color:TITAN}],
-                [{text:"the canyon",color:CREAM},{text:"claimed",color:TITAN}],
+                [{text:"wildfire",color:CREAM},{text:"claimed",color:TITAN}],
                 [{text:"the ridge.",color:GOLD}],
               ]} />
             <Line delay={0.5} />
             <div className="mt-10 space-y-7"
               style={{ fontSize:"1.08rem", lineHeight:"1.9", color:TITAN, opacity:0.88, maxWidth:"52ch" }}>
               {[
-                "Stephen was born in Malibu. He watched his family's home burn in 1993 and again in 2018. Both times, the hardest part wasn't the loss — it was what came after: contractors who couldn't be trusted, advisors who worked for the insurance company.",
+                "Stephen was born in Malibu. He watched his family's home burn in 1993 and again in 2025. Both times, the hardest part wasn't the loss — it was what came after: contractors who couldn't be trusted, advisors who worked for the insurance company.",
                 "Roman spent years overseeing construction across Los Angeles and watched, repeatedly, how quickly standards drift when no one is clearly standing for the person paying the bill.",
                 "James Roman Advisory exists because both of them needed it, years before they built it.",
               ].map((p,i) => <Fade key={i} delay={0.55 + i*0.2}><p>{p}</p></Fade>)}
@@ -569,8 +568,8 @@ export default function Prototype() {
                 ]} />
               <Fade delay={0.5}>
                 <p className="text-[1.08rem] leading-[1.9] max-w-md mb-12" style={{ color:TITAN, opacity:0.88 }}>
-                  Every client receives a dedicated digital workspace — real-time transparency on
-                  compliance status, document custody, and site activity. Nothing circulates informally.
+                  Every client receives a dedicated digital workspace — real-time visibility on
+                  compliance status, document custody, and site activity. Everything in one place. Nothing lost to email.
                 </p>
               </Fade>
               <Fade delay={0.65}>
@@ -655,11 +654,11 @@ export default function Prototype() {
         </section>
 
         {/* ══ CORNERSTONES — centered, no ghost letters ════════════════════ */}
-        <section style={{ background:"#080a0d" }}>
+        <section id="the-cornerstone" style={{ background:"#080a0d" }}>
           {/* Section header */}
           <div className="px-[12%] pt-24 pb-14 text-center"
             style={{ borderBottom:"1px solid rgba(178,168,152,0.07)" }}>
-            <Label center>Our Cornerstones</Label>
+            <Label center>The Cornerstone</Label>
             <RichH center size="clamp(1.8rem,2.8vw,3.5rem)" baseDelay={0.05}
               lines={[
                 [{text:"The terms",color:CREAM},{text:"we",color:TITAN}],
@@ -758,10 +757,10 @@ export default function Prototype() {
                 ]} />
               <p className="text-[1.08rem] leading-[1.9] max-w-sm mb-10" style={{ color:TITAN, opacity:0.88 }}>
                 Share only what is necessary. Full document exchange happens after an engagement is
-                accepted and secure client access is issued.
+                accepted and your Private Office is opened.
               </p>
               <div className="flex flex-wrap gap-2.5">
-                {["CCPA/CPRA aware","WCAG 2.2 AA target","No portal trackers"].map((l) => (
+                {["CCPA/CPRA compliant","No portal trackers"].map((l) => (
                   <span key={l} className="text-[0.72rem] uppercase tracking-widest border px-2.5 py-1"
                     style={{ borderColor:"rgba(178,168,152,0.14)", color:TITAN, opacity:0.55 }}>{l}</span>
                 ))}
@@ -779,12 +778,12 @@ export default function Prototype() {
               <BrandLogo className="h-9 opacity-55" />
               <div>
                 <p className="text-[0.84rem]" style={{ color:TITAN, opacity:0.46 }}>© 2026 James Roman Advisory LLC</p>
-                <p className="text-[0.72rem] mt-0.5" style={{ color:TITAN, opacity:0.3 }}>Malibu, California · Fully Certified · Privacy Guaranteed</p>
+                <p className="text-[0.72rem] mt-0.5" style={{ color:TITAN, opacity:0.3 }}>Malibu, California</p>
               </div>
             </div>
             <div className="flex gap-8 text-[0.82rem] uppercase tracking-[0.18em]"
               style={{ color:TITAN, opacity:0.34 }}>
-              {[["Practice","#the-process"],["Consultation","#consultation"],["Client portal","/portal"]].map(([l,h]) => (
+              {[["The Practice","#the-practice"],["Consultation","#consultation"],["Client portal","/portal"]].map(([l,h]) => (
                 <Link key={l} href={h} className="hover:opacity-70 transition-opacity duration-300">{l}</Link>
               ))}
             </div>
