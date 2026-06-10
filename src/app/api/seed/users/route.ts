@@ -2,7 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { ensureUsersTable, getDb } from "@/lib/db";
 import type { UserRole } from "@/lib/data-model";
 
-const SEED_KEY = process.env.SEED_KEY ?? "jr-seed-2026";
+// SECURITY: No fallback. If SEED_KEY is not set, the route is permanently locked.
+// Never add a default value here — this endpoint must fail loudly in any environment
+// where the key is absent, not silently degrade to a predictable string.
+const SEED_KEY = process.env.SEED_KEY;
 
 type SeedUser = {
   id: string;
@@ -19,6 +22,14 @@ const SEED_USERS: SeedUser[] = [
 ];
 
 export async function POST(req: NextRequest) {
+  // Fail loudly if key is not configured — never silently allow access
+  if (!SEED_KEY) {
+    return NextResponse.json(
+      { error: "Seed endpoint is not configured in this environment" },
+      { status: 503 }
+    );
+  }
+
   const key = req.nextUrl.searchParams.get("key");
 
   if (key !== SEED_KEY) {
