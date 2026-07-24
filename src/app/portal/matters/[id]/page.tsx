@@ -670,6 +670,8 @@ export default function MatterDetailPage() {
     setLoading(false);
   }, [id, router]);
 
+  // Intentional route-driven synchronization with the matter API.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { load(); }, [load]);
 
   useEffect(() => {

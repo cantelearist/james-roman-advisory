@@ -8,7 +8,6 @@ import {
   useScroll,
   useTransform,
   useInView,
-  useMotionValue,
   useSpring,
   useReducedMotion,
   AnimatePresence,
@@ -287,6 +286,8 @@ export default function Prototype() {
   const [navVisible, setNavVisible] = useState(true);
   const lastScrollY = useRef(0);
 
+  // Client mount controls browser-only intro behavior.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => setMounted(true), []);
   const handleIntroComplete = useCallback(() => setIntroComplete(true), []);
 
@@ -548,8 +549,8 @@ export default function Prototype() {
             {[...Array(18)].map((_,i) => (
               <div key={i} className="absolute rounded-full" style={{
                 width: i%3===0?2:1, height: i%3===0?2:1,
-                background:`rgba(236,230,214,${0.15+Math.random()*0.25})`,
-                left:`${5+Math.random()*90}%`, top:`${2+Math.random()*35}%`,
+                background:`rgba(236,230,214,${0.15+((i*7)%10)/40})`,
+                left:`${5+((i*37)%90)}%`, top:`${2+((i*17)%35)}%`,
                 boxShadow:`0 0 ${i%2===0?3:2}px rgba(236,230,214,0.3)`,
               }} />
             ))}

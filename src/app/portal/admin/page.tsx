@@ -77,6 +77,8 @@ export default function AdminPage() {
   }
 
   useEffect(() => {
+    // Intentional initial synchronization with the invitations API.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadInvitations();
   }, []);
 
