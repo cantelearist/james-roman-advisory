@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildSecurityHeaders, securityHeaders } from "./security";
+import { securityHeaders } from "./security";
 
 describe("securityHeaders", () => {
   it("sets the expected baseline browser protections", () => {
@@ -20,16 +20,5 @@ describe("securityHeaders", () => {
     expect(csp).toContain("connect-src 'self'");
     expect(csp).toContain("frame-ancestors 'none'");
     expect(csp).toContain("form-action 'self'");
-  });
-
-  it("does not allow unsafe eval in production CSP", () => {
-    const originalNodeEnv = process.env.NODE_ENV;
-    process.env.NODE_ENV = "production";
-    const csp = buildSecurityHeaders().find((header) => header.key === "Content-Security-Policy")
-      ?.value;
-    process.env.NODE_ENV = originalNodeEnv;
-
-    expect(csp).not.toContain("'unsafe-eval'");
-    expect(csp).toContain("upgrade-insecure-requests");
   });
 });

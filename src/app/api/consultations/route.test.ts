@@ -1,18 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const { sql } = vi.hoisted(() => ({
-  sql: vi.fn(),
-}));
-
-vi.mock("@/lib/db", () => ({
-  ensureConsultationsTable: vi.fn(),
-  getDb: () => sql,
-}));
-
-vi.mock("@/lib/email", () => ({
-  sendConsultationNotification: vi.fn().mockResolvedValue(undefined),
-}));
-
 import { POST } from "./route";
 
 const validBody = {
@@ -33,7 +20,7 @@ function requestFor(body: unknown) {
 
 describe("POST /api/consultations", () => {
   afterEach(() => {
-    vi.clearAllMocks();
+    vi.restoreAllMocks();
   });
 
   it("accepts valid consultation requests and returns a private reference", async () => {

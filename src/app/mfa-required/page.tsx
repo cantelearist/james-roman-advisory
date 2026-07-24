@@ -1,6 +1,5 @@
 "use client";
 
-import { useClerk } from "@clerk/nextjs";
 import Link from "next/link";
 import { ShieldAlert, ShieldCheck } from "lucide-react";
 
@@ -10,8 +9,6 @@ const CARD = "#0d0f14";
 const TITAN = "#b2a898";
 
 export default function MFARequiredPage() {
-  const { openUserProfile } = useClerk();
-
   return (
     <main
       style={{
@@ -107,7 +104,7 @@ export default function MFARequiredPage() {
           }}
         >
           {[
-            "Click the button below to open your account security settings",
+            "Open your account settings at account.jamesroman.la",
             "Navigate to Security → Two-factor authentication",
             "Add an authenticator app (Google Authenticator, 1Password, Authy)",
             "Return here — access is restored immediately after verification",
@@ -141,15 +138,16 @@ export default function MFARequiredPage() {
           ))}
         </div>
 
-        {/* CTA — opens Clerk's hosted user profile modal (correct for this instance) */}
-        <button
-          onClick={() => openUserProfile()}
+        {/* CTA */}
+        <a
+          href="https://accounts.clerk.dev/user"
+          target="_blank"
+          rel="noopener noreferrer"
           style={{
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
             gap: "0.5rem",
-            width: "100%",
             background: GOLD,
             color: "#070809",
             fontSize: "0.75rem",
@@ -157,8 +155,7 @@ export default function MFARequiredPage() {
             letterSpacing: "0.12em",
             textTransform: "uppercase",
             padding: "0.875rem 2rem",
-            border: "none",
-            cursor: "pointer",
+            textDecoration: "none",
             transition: "opacity 0.2s",
             marginBottom: "1rem",
           }}
@@ -171,7 +168,7 @@ export default function MFARequiredPage() {
         >
           <ShieldCheck size={14} />
           Set up two-factor authentication
-        </button>
+        </a>
 
         <Link
           href="/portal"

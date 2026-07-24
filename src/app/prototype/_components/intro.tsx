@@ -19,8 +19,6 @@ export function IntroSequence({ onComplete }: { onComplete: () => void }) {
     // Skip intro if already seen this session
     try {
       if (sessionStorage.getItem(SESSION_KEY)) {
-        // Session storage is the external source that determines initial phase.
-        // eslint-disable-next-line react-hooks/set-state-in-effect
         setPhase(4);
         onComplete();
         return;

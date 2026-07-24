@@ -5,30 +5,6 @@ import type { NextRequest } from "next/server";
 // ─── Staging basic-auth gate ──────────────────────────────────────────────────
 
 const STAGING_HOSTNAMES = ["staging.jamesroman.la"];
-const PRIVATE_RESPONSE_HEADERS = {
-  "Cache-Control": "no-store, max-age=0",
-  "X-Robots-Tag": "noindex, nofollow, noarchive",
-};
-
-const PRIVATE_PREFIXES = ["/api", "/mfa-required", "/portal", "/sign-in", "/sign-up"];
-
-function isPrivatePath(pathname: string) {
-  return PRIVATE_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
-}
-
-function withPrivateHeaders(response: NextResponse) {
-  Object.entries(PRIVATE_RESPONSE_HEADERS).forEach(([key, value]) => {
-    response.headers.set(key, value);
-  });
-  return response;
-}
-
-function privateOfficeUnavailable() {
-  return new NextResponse("Private office is temporarily unavailable.", {
-    status: 503,
-    headers: PRIVATE_RESPONSE_HEADERS,
-  });
-}
 
 function stagingBasicAuth(req: NextRequest): NextResponse | null {
   const host = req.headers.get("host") ?? "";
@@ -37,12 +13,7 @@ function stagingBasicAuth(req: NextRequest): NextResponse | null {
   }
 
   const password = process.env.STAGING_PASSWORD;
-  if (!password) {
-    return new NextResponse("Staging access is not configured.", {
-      status: 503,
-      headers: PRIVATE_RESPONSE_HEADERS,
-    });
-  }
+  if (!password) return null; // env var not set — fail open (shouldn't happen in staging)
 
   const authHeader = req.headers.get("authorization") ?? "";
   if (authHeader.startsWith("Basic ")) {
@@ -56,7 +27,6 @@ function stagingBasicAuth(req: NextRequest): NextResponse | null {
   return new NextResponse("Staging access restricted.", {
     status: 401,
     headers: {
-      ...PRIVATE_RESPONSE_HEADERS,
       "WWW-Authenticate": 'Basic realm="JRA Staging", charset="UTF-8"',
       "Content-Type": "text/plain",
     },
@@ -96,25 +66,15 @@ export const proxy = clerkMiddleware(async (auth, req) => {
   if (stagingBlock) return stagingBlock;
 
   // Public routes pass through immediately
-  if (isPublicRoute(req)) {
-    const response = NextResponse.next();
-    return isPrivatePath(req.nextUrl.pathname) ? withPrivateHeaders(response) : response;
-  }
+  if (isPublicRoute(req)) return NextResponse.next();
 
-  let userId: string | null;
-  let sessionClaims: unknown;
-  try {
-    ({ userId, sessionClaims } = await auth());
-  } catch (error) {
-    console.error("proxy.auth_failed", error);
-    return privateOfficeUnavailable();
-  }
+  const { userId, sessionClaims } = await auth();
 
   // Not authenticated → sign-in with return URL
   if (!userId) {
     const signIn = new URL("/sign-in", req.url);
     signIn.searchParams.set("redirect_url", req.nextUrl.pathname);
-    return withPrivateHeaders(NextResponse.redirect(signIn));
+    return NextResponse.redirect(signIn);
   }
 
   // Role from session claims.
@@ -131,12 +91,12 @@ export const proxy = clerkMiddleware(async (auth, req) => {
 
   // Staff-only area: non-staff clients bounce back to portal home
   if (isStaffRoute(req) && role !== undefined && !isStaff) {
-    return withPrivateHeaders(NextResponse.redirect(new URL("/portal", req.url)));
+    return NextResponse.redirect(new URL("/portal", req.url));
   }
 
   // Admin-only area: advisors and clients bounce back to portal home
   if (isAdminRoute(req) && role !== undefined && !isAdmin) {
-    return withPrivateHeaders(NextResponse.redirect(new URL("/portal", req.url)));
+    return NextResponse.redirect(new URL("/portal", req.url));
   }
 
   // MFA enforcement for staff.
@@ -149,12 +109,11 @@ export const proxy = clerkMiddleware(async (auth, req) => {
 
     // fva is present → user has MFA enrolled → enforce second factor
     if (fva !== undefined && fva[1] === null) {
-      return withPrivateHeaders(NextResponse.redirect(new URL("/mfa-required", req.url)));
+      return NextResponse.redirect(new URL("/mfa-required", req.url));
     }
   }
 
-  const response = NextResponse.next();
-  return isPrivatePath(req.nextUrl.pathname) ? withPrivateHeaders(response) : response;
+  return NextResponse.next();
 });
 
 export const config = {

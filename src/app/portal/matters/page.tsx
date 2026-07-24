@@ -422,8 +422,6 @@ export default function MattersPage() {
     setLoading(false);
   }, []);
 
-  // Intentional initial synchronization with the matters and clients APIs.
-  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { load(); }, [load]);
 
   function handleStatusUpdate(id: string, status: MatterStatus) {

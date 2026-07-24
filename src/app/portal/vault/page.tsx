@@ -125,8 +125,6 @@ export default function VaultPage() {
   }, []);
 
   useEffect(() => {
-    // Intentional initial synchronization with the document API.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchDocuments();
   }, [fetchDocuments]);
 
