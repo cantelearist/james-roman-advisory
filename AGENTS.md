@@ -34,6 +34,11 @@ docs in `node_modules/next/dist/docs/`.
 
 ## Deployment Policy
 
+Production deployment requires Roman's explicit instruction in the current
+conversation (e.g. "deploy", "deploy to production", "ship it"). Never infer
+deployment intent, and never deploy automatically after completing development
+work — including to satisfy the Definition of Done.
+
 Every `npx vercel --prod` must be followed immediately by:
 
 ```
@@ -82,7 +87,7 @@ A ticket is done when:
 - [ ] No fake data, mock states, or TODO comments in shipped code
 - [ ] If a new API route: role check is present and tested manually
 - [ ] If a UI change: empty state is implemented alongside happy path
-- [ ] Deployed to production and both domain aliases are confirmed live
+- [ ] Ready to deploy (deployment itself happens only on Roman's explicit instruction; once deployed, both domain aliases must be confirmed live)
 - [ ] AUTH_ACCESS_REVIEW.md is updated if auth behavior changed
 
 ---

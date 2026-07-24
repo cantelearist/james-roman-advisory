@@ -35,6 +35,29 @@ Do not auto-deploy after completing development work.
 
 # Claude-Specific Context
 
+## Commands
+
+```bash
+npm run dev           # dev server at localhost:3000
+npm run build         # production build
+npm run lint          # ESLint
+npm run test          # Vitest unit tests (jsdom)
+npm run test:watch    # Vitest watch mode
+npm run test:e2e      # Playwright e2e (.qa/mobile-menu.spec.ts only)
+npm run test:coverage # v8 coverage report
+
+# Single test file:
+npx vitest run src/components/consultation-form.test.tsx
+```
+
+## Development Constraints
+
+- Security headers + CSP are applied globally in `next.config.ts` via `src/lib/security.ts`. Do not loosen CSP without reviewing `docs/SECURITY-POSTURE.md`.
+- Consultation form data must be validated with the Zod schema in `src/lib/intake.ts` before any processing. Use `redactForAudit()` when logging — never log raw PII.
+- `src/components/ui/` is excluded from coverage. No custom components go there; use the shadcn CLI to add new primitives.
+- `@base-ui/react` is present alongside shadcn — prefer shadcn for new components unless a primitive is missing.
+- `@` path alias resolves to `src/`.
+
 ## Role Assignment
 
 Claude owns: Auth layer, security posture, API route hardening, data access scoping.
