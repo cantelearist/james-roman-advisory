@@ -44,7 +44,7 @@ _Last updated: 2026-05-11_
 - **Framework:** Next.js 15 (App Router) + TypeScript, React Server Components
 - **Styling:** Tailwind CSS + shadcn/ui (matches Magic MCP output)
 - **Forms/validation:** React Hook Form + Zod
-- **Auth:** Clerk (preferred — has MFA, passkeys, audit log, SOC 2 out of the box) or Auth.js with WebAuthn
+- **Auth:** First-party email/password sessions with a planned second-factor upgrade
 - **DB:** Postgres on Neon (branchable) or Supabase (built-in RLS + storage)
 - **ORM:** Drizzle (preferred for strict types and migrations)
 - **Storage:** S3-compatible (Supabase Storage or Cloudflare R2) with server-side encryption, signed URLs only, no public buckets
@@ -74,7 +74,7 @@ JR Design/
 ```
 
 ### Data model (initial)
-- `users` — Clerk-linked, role (`client`, `advisor`, `admin`)
+- `users` — first-party account identity, password hash, role (`client`, `advisor`, `admin`)
 - `clients` — household/entity record, billing entity, primary contact
 - `engagements` — belongs to client, status, scope, jurisdiction, principals (advisor IDs)
 - `engagement_members` — join table for access (a client may have spouse/attorney with scoped access)
@@ -128,7 +128,7 @@ AI is integrated **from intake forward**, but never speaks on the firm's behalf 
 - **Backups:** Daily snapshot, 30-day retention, restore drill quarterly.
 - **No third-party trackers on `/portal/*`.** Marketing routes get a single privacy-respecting analytics tool (Vercel Analytics or Plausible) with cookie banner where required.
 - **Secrets:** Vercel env + 1Password / Doppler; no secrets in repo; rotation calendar.
-- **Vendor list (DPA on file before launch):** Vercel, Neon/Supabase, Clerk, Resend, Anthropic, Sentry, Stripe.
+- **Vendor list (DPA on file before launch):** Vercel, Neon/Supabase, Resend, Anthropic, Sentry, Stripe.
 
 ### Confidentiality (firm-specific)
 - Engagement records keyed by internal ID, never by address.
@@ -153,7 +153,7 @@ AI is integrated **from intake forward**, but never speaks on the firm's behalf 
 ### Phase 0 — Foundation (this session, ~1 day)
 - Initialize Next.js + TS + Tailwind + shadcn in `/Users/romancantelearist/JR Design`
 - Wire Drizzle + Neon/Supabase, schema migration #1
-- Wire Clerk, route protection for `/portal/*`
+- Wire first-party sessions, password hashing, and route protection for `/portal/*`
 - ESLint, Prettier, Husky, axe-core CI, basic Sentry
 - Deploy preview on Vercel
 

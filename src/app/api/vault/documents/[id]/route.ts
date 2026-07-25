@@ -2,36 +2,32 @@
  * GET  /api/vault/documents/[id]  — stream download (access-logged)
  * DELETE /api/vault/documents/[id] — soft-delete (advisor/admin only)
  *
- * Auth: Clerk session required. Clients can only access their own documents.
+ * Auth: first-party session required. Clients can only access their own documents.
  */
-import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 
 import { ensureVaultTables, getDb, logFileAccess } from "@/lib/db";
 import { deleteFromVault } from "@/lib/vault";
+import { getAuthContext, isStaff } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
-export async function GET(request: Request, context: RouteContext) {
+export async function GET(request: Request, routeContext: RouteContext) {
   try {
-    const { userId } = await auth();
-    if (!userId) {
+    const authContext = await getAuthContext();
+    if (!authContext) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+    const { userId, role } = authContext;
 
-    const { id } = await context.params;
+    const { id } = await routeContext.params;
 
     await ensureVaultTables();
     const sql = getDb();
 
     // Resolve client, then verify ownership
-    const clientRows = await sql`
-      SELECT id, role FROM users WHERE id = ${userId}
-    `;
-    const isStaff = clientRows.length > 0 && ["advisor", "admin"].includes(clientRows[0].role as string);
-
     const docRows = await sql`
       SELECT d.id, d.name, d.original_name, d.blob_pathname, d.content_type, d.client_id
       FROM documents d
@@ -46,9 +42,9 @@ export async function GET(request: Request, context: RouteContext) {
     const doc = docRows[0];
 
     // Verify: staff can download any doc; clients only their own
-    if (!isStaff) {
+    if (!isStaff(role)) {
       const ownerRows = await sql`
-        SELECT id FROM clients WHERE clerk_user_id = ${userId} AND id = ${doc.client_id}
+        SELECT id FROM clients WHERE user_id = ${userId} AND id = ${doc.client_id}
       `;
       if (ownerRows.length === 0) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
@@ -92,23 +88,21 @@ export async function GET(request: Request, context: RouteContext) {
   }
 }
 
-export async function DELETE(request: Request, context: RouteContext) {
+export async function DELETE(request: Request, routeContext: RouteContext) {
   try {
-    const { userId } = await auth();
-    if (!userId) {
+    const authContext = await getAuthContext();
+    if (!authContext) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+    const { userId, role } = authContext;
 
-    const { id } = await context.params;
+    const { id } = await routeContext.params;
 
     await ensureVaultTables();
     const sql = getDb();
 
     // Only advisor/admin can delete
-    const staffRows = await sql`
-      SELECT role FROM users WHERE id = ${userId} AND role IN ('advisor', 'admin')
-    `;
-    if (staffRows.length === 0) {
+    if (!isStaff(role)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 

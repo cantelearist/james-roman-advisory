@@ -1,28 +1,24 @@
-import { clerkClient, currentUser } from "@clerk/nextjs/server";
+import { createHash, randomBytes } from "node:crypto";
+import { Resend } from "resend";
 import { NextRequest, NextResponse } from "next/server";
 
-import { getRole, isAdmin } from "@/lib/auth";
+import { getAuthContext, isAdmin } from "@/lib/auth";
+import { ensureAuthTables, getDb } from "@/lib/db";
 import { ratelimit } from "@/lib/ratelimit";
 
 export const runtime = "nodejs";
 
-/** POST /api/admin/invite — send a Clerk invitation with a pre-assigned role */
+function hashToken(token: string): string {
+  return createHash("sha256").update(token).digest("hex");
+}
+
 export async function POST(req: NextRequest) {
-  const user = await currentUser();
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const context = await getAuthContext();
+  if (!context) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!isAdmin(context.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-  const role = getRole(user);
-  if (!isAdmin(role)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
-
-  // Rate limit: 20 invitations per hour per admin user
-  const rl = await ratelimit("invite", user.id);
-  if (rl?.blocked) {
-    return NextResponse.json({ error: "Too many requests. Please try again later." }, { status: 429 });
-  }
+  const rl = await ratelimit("invite", context.userId);
+  if (rl?.blocked) return NextResponse.json({ error: "Too many requests. Please try again later." }, { status: 429 });
 
   let body: { email?: string; role?: string };
   try {
@@ -31,104 +27,69 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const { email, role: invitedRole } = body;
-
-  if (!email || typeof email !== "string") {
-    return NextResponse.json({ error: "email is required" }, { status: 400 });
-  }
-
-  const emailTrimmed = email.trim().toLowerCase();
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  if (!emailRegex.test(emailTrimmed)) {
+  const email = body.email?.trim().toLowerCase();
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return NextResponse.json({ error: "Invalid email address" }, { status: 400 });
   }
-
-  const allowedRoles = ["admin", "advisor", "client"];
-  const assignedRole = allowedRoles.includes(invitedRole ?? "")
-    ? invitedRole
+  const assignedRole = (["admin", "advisor", "client"] as const).includes(body.role as never)
+    ? (body.role as "admin" | "advisor" | "client")
     : "client";
 
-  try {
-    const clerk = await clerkClient();
-    const invitation = await clerk.invitations.createInvitation({
-      emailAddress: emailTrimmed,
-      publicMetadata: { role: assignedRole },
-      redirectUrl: `${process.env.NEXT_PUBLIC_BASE_URL ?? "https://jamesroman.la"}/sign-up`,
-      ignoreExisting: true,
-    });
+  await ensureAuthTables();
+  const sql = getDb();
+  const existing = await sql`SELECT id FROM users WHERE LOWER(email) = ${email} LIMIT 1`;
+  if (existing.length > 0) return NextResponse.json({ error: "An account with this email already exists" }, { status: 409 });
 
-    return NextResponse.json({
-      id: invitation.id,
-      email: invitation.emailAddress,
-      role: assignedRole,
-      status: invitation.status,
-      createdAt: invitation.createdAt,
+  const token = randomBytes(32).toString("base64url");
+  const invitationId = crypto.randomUUID();
+  await sql`DELETE FROM auth_invitations WHERE LOWER(email) = ${email} AND accepted_at IS NULL`;
+  await sql`
+    INSERT INTO auth_invitations (id, email, role, token_hash, expires_at)
+    VALUES (${invitationId}, ${email}, ${assignedRole}, ${hashToken(token)}, NOW() + INTERVAL '7 days')
+  `;
+
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? "https://www.jamesroman.la";
+  const inviteUrl = `${baseUrl}/sign-up?invite=${encodeURIComponent(token)}&email=${encodeURIComponent(email)}`;
+  if (process.env.RESEND_API_KEY) {
+    const resend = new Resend(process.env.RESEND_API_KEY);
+    const { error } = await resend.emails.send({
+      from: "James Roman Advisory <notifications@jamesroman.la>",
+      to: [email],
+      subject: "Your James Roman Advisory Private Office invitation",
+      html: `<p>You have been invited to the James Roman Advisory Private Office.</p><p><a href="${inviteUrl}">Create your secure account</a></p><p>This invitation expires in seven days.</p>`,
     });
-  } catch (err) {
-    const message =
-      err instanceof Error ? err.message : "Failed to create invitation";
-    console.error("invite.create.failed", { email: emailTrimmed, err });
-    return NextResponse.json({ error: message }, { status: 500 });
+    if (error) console.error("invite.email.failed", { email, error });
+  } else {
+    console.warn("invite.email.skipped", "RESEND_API_KEY not set");
   }
+
+  return NextResponse.json({ id: invitationId, email, role: assignedRole, status: "pending", createdAt: new Date().toISOString() }, { status: 201 });
 }
 
-/** GET /api/admin/invite — list pending invitations */
 export async function GET() {
-  const user = await currentUser();
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  const role = getRole(user);
-  if (!isAdmin(role)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
-
-  try {
-    const clerk = await clerkClient();
-    const result = await clerk.invitations.getInvitationList({
-      status: "pending",
-      limit: 100,
-    });
-
-    const invitations = result.data.map((inv) => ({
-      id: inv.id,
-      email: inv.emailAddress,
-      role: (inv.publicMetadata as Record<string, string>)?.role ?? "client",
-      createdAt: inv.createdAt,
-    }));
-
-    return NextResponse.json({ invitations });
-  } catch (err) {
-    console.error("invite.list.failed", err);
-    return NextResponse.json({ error: "Failed to fetch invitations" }, { status: 500 });
-  }
+  const context = await getAuthContext();
+  if (!context) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!isAdmin(context.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  await ensureAuthTables();
+  const sql = getDb();
+  const invitations = await sql`
+    SELECT id, email, role, created_at AS "createdAt"
+    FROM auth_invitations
+    WHERE accepted_at IS NULL AND expires_at > NOW()
+    ORDER BY created_at DESC
+    LIMIT 100
+  `;
+  return NextResponse.json({ invitations });
 }
 
-/** DELETE /api/admin/invite?id=... — revoke a pending invitation */
 export async function DELETE(req: NextRequest) {
-  const user = await currentUser();
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  const role = getRole(user);
-  if (!isAdmin(role)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
-
+  const context = await getAuthContext();
+  if (!context) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!isAdmin(context.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   const id = req.nextUrl.searchParams.get("id");
-  if (!id) {
-    return NextResponse.json({ error: "id is required" }, { status: 400 });
-  }
-
-  try {
-    const clerk = await clerkClient();
-    await clerk.invitations.revokeInvitation(id);
-    return NextResponse.json({ revoked: true });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Failed to revoke invitation";
-    console.error("invite.revoke.failed", { id, err });
-    return NextResponse.json({ error: message }, { status: 500 });
-  }
+  if (!id) return NextResponse.json({ error: "id is required" }, { status: 400 });
+  await ensureAuthTables();
+  const sql = getDb();
+  await sql`DELETE FROM auth_invitations WHERE id = ${id}`;
+  return NextResponse.json({ revoked: true });
 }

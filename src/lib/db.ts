@@ -54,7 +54,34 @@ export async function ensureUsersTable() {
       name        TEXT NOT NULL,
       email       TEXT NOT NULL UNIQUE,
       role        TEXT NOT NULL CHECK (role IN ('client', 'advisor', 'admin')),
+      password_hash TEXT,
       created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
+  await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT`;
+}
+
+export async function ensureAuthTables() {
+  await ensureUsersTable();
+  const sql = getDb();
+  await sql`
+    CREATE TABLE IF NOT EXISTS auth_sessions (
+      id         TEXT PRIMARY KEY,
+      user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      token_hash TEXT NOT NULL UNIQUE,
+      expires_at TIMESTAMPTZ NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
+  await sql`
+    CREATE TABLE IF NOT EXISTS auth_invitations (
+      id         TEXT PRIMARY KEY,
+      email      TEXT NOT NULL,
+      role       TEXT NOT NULL CHECK (role IN ('client', 'advisor', 'admin')),
+      token_hash TEXT NOT NULL UNIQUE,
+      expires_at TIMESTAMPTZ NOT NULL,
+      accepted_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `;
 }
@@ -83,11 +110,11 @@ export async function ensureConsultationsTable() {
 export async function ensureVaultTables() {
   const sql = getDb();
 
-  // clients — one row per client; clerk_user_id nullable (set after invite accepted)
+  // clients — one row per client; user_id is the first-party auth user id.
   await sql`
     CREATE TABLE IF NOT EXISTS clients (
       id            TEXT PRIMARY KEY DEFAULT gen_random_uuid()::TEXT,
-      clerk_user_id TEXT UNIQUE,
+      user_id       TEXT UNIQUE,
       name          TEXT NOT NULL,
       email         TEXT,
       phone         TEXT,
@@ -95,6 +122,15 @@ export async function ensureVaultTables() {
       created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
+  `;
+  await sql`ALTER TABLE clients ADD COLUMN IF NOT EXISTS user_id TEXT`;
+  await sql`
+    UPDATE clients c
+    SET user_id = u.id
+    FROM users u
+    WHERE c.user_id IS NULL
+      AND c.email IS NOT NULL
+      AND LOWER(c.email) = LOWER(u.email)
   `;
 
   // properties — one or more properties per client

@@ -1,17 +1,11 @@
-import { auth, currentUser } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { getDb, ensureVaultTables, logMatterEvent } from "@/lib/db";
-
-function isStaff(role?: string) {
-  return role === "admin" || role === "advisor";
-}
+import { getAuthContext, isStaff } from "@/lib/auth";
 
 export async function GET(req: Request) {
-  const { userId } = await auth();
-  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-  const user = await currentUser();
-  const role = user?.publicMetadata?.role as string | undefined;
+  const context = await getAuthContext();
+  if (!context) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const { userId, role } = context;
   const { searchParams } = new URL(req.url);
   const statusFilter = searchParams.get("status");
   const clientId = searchParams.get("client_id");
@@ -50,7 +44,7 @@ export async function GET(req: Request) {
         p.state   AS property_state,
         (SELECT COUNT(*) FROM documents d WHERE d.matter_id = m.id)::int AS document_count
       FROM matters m
-      JOIN clients c ON c.id = m.client_id AND c.clerk_user_id = ${userId}
+        JOIN clients c ON c.id = m.client_id AND c.user_id = ${userId}
       LEFT JOIN properties p ON p.id = m.property_id
       ORDER BY m.updated_at DESC
     `;
@@ -60,11 +54,9 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const { userId } = await auth();
-  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-  const user = await currentUser();
-  const role = user?.publicMetadata?.role as string | undefined;
+  const context = await getAuthContext();
+  if (!context) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const { userId, role } = context;
   if (!isStaff(role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const body = await req.json();

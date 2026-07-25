@@ -56,9 +56,6 @@ These exist in Vercel only. Never read from `.env.local` in production code with
 
 | Variable | Where |
 |---|---|
-| `CLERK_SECRET_KEY` | Vercel prod + staging |
-| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Vercel prod + staging |
-| `NEXT_PUBLIC_CLERK_FRONTEND_API_URL` | Vercel prod (override CSP Clerk host) |
 | `NEON_DATABASE_URL` | Vercel prod + staging |
 | `BLOB_READ_WRITE_TOKEN` | Vercel prod + staging |
 | `RESEND_API_KEY` | Vercel prod only |
@@ -70,11 +67,10 @@ These exist in Vercel only. Never read from `.env.local` in production code with
 Instantiate `new Resend(...)` inside the function body, not at module top level.
 Next.js static page generation will throw if the key is absent at module load time.
 
-## Auth Dual-Layer Pattern
+## Auth Layer Pattern
 
 Every protected resource must pass two checks:
-1. **Middleware** (fast): JWT claims in `proxy.ts` — catches unauthenticated requests early
-2. **Server** (authoritative): `currentUser()` in API routes — ground truth, always
+1. **Middleware** (fast): session-cookie presence in `proxy.ts` — catches unauthenticated requests early
+2. **Server** (authoritative): `getAuthContext()` in API routes — verifies the hashed session and role
 
-Never rely on middleware alone for sensitive operations. Never skip the server check
-because middleware "already handled it."
+Never rely on middleware alone for sensitive operations.

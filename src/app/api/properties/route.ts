@@ -1,17 +1,11 @@
-import { auth, currentUser } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { getDb, ensureVaultTables } from "@/lib/db";
-
-function isStaff(role?: string) {
-  return role === "admin" || role === "advisor";
-}
+import { getAuthContext, isStaff } from "@/lib/auth";
 
 export async function POST(req: Request) {
-  const { userId } = await auth();
-  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-  const user = await currentUser();
-  const role = user?.publicMetadata?.role as string | undefined;
+  const context = await getAuthContext();
+  if (!context) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const { role } = context;
   if (!isStaff(role)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
@@ -43,11 +37,9 @@ export async function POST(req: Request) {
 }
 
 export async function GET(req: Request) {
-  const { userId } = await auth();
-  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-  const user = await currentUser();
-  const role = user?.publicMetadata?.role as string | undefined;
+  const context = await getAuthContext();
+  if (!context) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const { userId, role } = context;
   const staff = isStaff(role);
 
   const { searchParams } = new URL(req.url);
@@ -63,7 +55,7 @@ export async function GET(req: Request) {
   if (!staff) {
     const [owner] = await sql`
       SELECT id FROM clients
-      WHERE id = ${clientId} AND clerk_user_id = ${userId}
+      WHERE id = ${clientId} AND user_id = ${userId}
     `;
     if (!owner) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });

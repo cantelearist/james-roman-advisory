@@ -19,7 +19,7 @@ docs in `node_modules/next/dist/docs/`.
 
 **Never do any of the following:**
 
-1. `npx clerk init` or any Clerk CLI on the existing project — would overwrite CLERK keys.
+1. Never introduce a hosted authentication provider into this project without an explicit architecture decision.
 2. Commit `STRIPE_SECRET_KEY`, `RESEND_API_KEY`, `BLOB_READ_WRITE_TOKEN`,
    `NEON_DATABASE_URL`, or `STAGING_PASSWORD` to code. These go in Vercel env vars only.
 3. Return `blob_pathname` or any Vercel Blob URL in an API response to a client.
@@ -48,12 +48,12 @@ is set in both preview and production environments before deploying.
 
 ---
 
-## MFA Rule (canonical, authoritative)
+## Auth Rule (canonical, authoritative)
 
-A staff session is MFA-verified when `fva[1]` from Clerk session claims is not null.
-Phone verification does NOT satisfy MFA. Staff must complete a TOTP or hardware key
-second factor. This rule applies in both `src/proxy.ts` (middleware) and `src/lib/auth.ts`
-(server). Never relax this check for staff routes.
+Staff authorization is enforced by the first-party session lookup in `src/lib/auth.ts`
+and every protected API route. Middleware only performs the unauthenticated fast-path
+redirect. Do not relax server-side role or ownership checks. A second-factor upgrade is
+required before broad production access to sensitive staff data.
 
 ---
 

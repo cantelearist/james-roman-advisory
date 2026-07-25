@@ -1,7 +1,7 @@
 # RCA document PDFs
 
 Staff-facing document generation is available at `POST /api/documents/pdf`.
-The route requires an authenticated, MFA-verified advisor or admin session and returns an
+The route requires an authenticated advisor or admin session and returns an
 RCA-styled, private PDF attachment. Payloads are limited to 512 KB, 30
 sections, and bounded text fields so a malformed request cannot consume
 unbounded server memory.

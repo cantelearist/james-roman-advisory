@@ -6,7 +6,7 @@
  *   - matter_id   string (optional)
  *   - name        string (optional — defaults to original filename)
  *
- * Auth: Clerk session required.
+ * Auth: first-party session required.
  *   - Staff (admin/advisor): may upload to any client's matter.
  *   - Client: must have an existing, admin-provisioned client record.
  *             Auto-creation of client records is NOT permitted here.
@@ -15,10 +15,9 @@
  *
  * Returns: { document } with id, name, category, size_bytes, created_at.
  */
-import { auth, currentUser } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 
-import { getRole, isStaff } from "@/lib/auth";
+import { getAuthContext, isStaff } from "@/lib/auth";
 import { ensureVaultTables, getDb, logFileAccess } from "@/lib/db";
 import {
   ALLOWED_MIME_TYPES,
@@ -34,17 +33,11 @@ export const maxDuration = 60;
 export async function POST(request: Request) {
   try {
     // ── Auth ────────────────────────────────────────────────────────────────
-    const { userId } = await auth();
-    if (!userId) {
+    const context = await getAuthContext();
+    if (!context) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-
-    const clerkUser = await currentUser();
-    if (!clerkUser) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const role = getRole(clerkUser);
+    const { userId, user, role } = context;
 
     // Deny users with no assigned role. All legitimate users are provisioned
     // via the admin invite flow before they can upload anything.
@@ -108,11 +101,10 @@ export async function POST(request: Request) {
       } else {
         // Staff self-upload without a matter — use staff's own client record,
         // creating one if needed (acceptable for staff, not for clients).
-        const email = clerkUser.emailAddresses?.[0]?.emailAddress ?? "";
         const rows = await sql`
-          INSERT INTO clients (id, clerk_user_id, name, email)
-          VALUES (gen_random_uuid()::TEXT, ${userId}, ${clerkUser.fullName ?? email}, ${email})
-          ON CONFLICT (clerk_user_id) DO UPDATE SET name = EXCLUDED.name
+          INSERT INTO clients (id, user_id, name, email)
+          VALUES (gen_random_uuid()::TEXT, ${userId}, ${user.name}, ${user.email})
+          ON CONFLICT (user_id) DO UPDATE SET name = EXCLUDED.name
           RETURNING id
         `;
         clientId = rows[0].id as string;
@@ -121,7 +113,7 @@ export async function POST(request: Request) {
       // Client role: must have a pre-existing, admin-provisioned client record.
       // Auto-creation is NOT allowed — it would bypass the invite-only model.
       const clientRows = await sql`
-        SELECT id FROM clients WHERE clerk_user_id = ${userId}
+        SELECT id FROM clients WHERE user_id = ${userId}
       `;
       if (clientRows.length === 0) {
         return NextResponse.json(

@@ -3,28 +3,29 @@
  * Returns the authenticated client's documents, optionally filtered by matter_id.
  * Query params: ?matter_id=<uuid>  (optional)
  *
- * Auth: Clerk session required.
+ * Auth: first-party session required.
  */
-import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 
 import { ensureVaultTables, getDb, logFileAccess } from "@/lib/db";
+import { getAuthContext } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
 export async function GET(request: Request) {
   try {
-    const { userId } = await auth();
-    if (!userId) {
+    const context = await getAuthContext();
+    if (!context) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+    const { userId } = context;
 
     await ensureVaultTables();
     const sql = getDb();
 
     // Resolve client id for this user
     const clientRows = await sql`
-      SELECT id FROM clients WHERE clerk_user_id = ${userId}
+      SELECT id FROM clients WHERE user_id = ${userId}
     `;
     if (clientRows.length === 0) {
       return NextResponse.json({ documents: [] });

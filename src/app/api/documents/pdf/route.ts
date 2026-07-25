@@ -1,8 +1,7 @@
-import { auth, currentUser } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
-import { getRole, isStaff } from "@/lib/auth";
+import { getAuthContext, isStaff } from "@/lib/auth";
 import { renderRcaPdf } from "@/lib/pdf";
 
 export const runtime = "nodejs";
@@ -37,16 +36,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Document payload is too large" }, { status: 413 });
   }
 
-  const [{ sessionClaims }, user] = await Promise.all([auth(), currentUser()]);
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!isStaff(getRole(user))) {
+  const context = await getAuthContext();
+  if (!context) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!isStaff(context.role)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
-  const fva = (sessionClaims as Record<string, unknown> | null)?.fva as
-    | [number | null, number | null]
-    | undefined;
-  if (!fva || fva[1] === null) {
-    return NextResponse.json({ error: "MFA required" }, { status: 403 });
   }
 
   let body: unknown;

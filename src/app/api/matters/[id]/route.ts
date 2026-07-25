@@ -1,6 +1,6 @@
-import { auth, currentUser } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { getDb, ensureVaultTables, logMatterEvent, MatterStatus } from "@/lib/db";
+import { getAuthContext, isStaff } from "@/lib/auth";
 
 const VALID_STATUSES: MatterStatus[] = [
   "intake", "assessment", "review", "vendor_evaluation", "oversight", "clearance", "closed",
@@ -10,8 +10,9 @@ export async function GET(
   _req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { userId } = await auth();
-  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const context = await getAuthContext();
+  if (!context) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const { userId, role } = context;
 
   const { id } = await params;
   await ensureVaultTables();
@@ -33,14 +34,10 @@ export async function GET(
   `;
   if (!matter) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  const user = await currentUser();
-  const role = user?.publicMetadata?.role as string | undefined;
-  const isStaff = role === "admin" || role === "advisor";
-
   // Clients can only see their own matter
-  if (!isStaff) {
-    const [client] = await sql`SELECT clerk_user_id FROM clients WHERE id = ${matter.client_id}`;
-    if (!client || client.clerk_user_id !== userId) {
+  if (!isStaff(role)) {
+    const [client] = await sql`SELECT user_id FROM clients WHERE id = ${matter.client_id}`;
+    if (!client || client.user_id !== userId) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
   }
@@ -63,12 +60,10 @@ export async function PATCH(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { userId } = await auth();
-  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-  const user = await currentUser();
-  const role = user?.publicMetadata?.role as string | undefined;
-  if (role !== "admin" && role !== "advisor") {
+  const context = await getAuthContext();
+  if (!context) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const { userId, role } = context;
+  if (!isStaff(role)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

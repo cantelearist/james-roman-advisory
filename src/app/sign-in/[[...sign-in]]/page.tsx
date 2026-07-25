@@ -1,11 +1,7 @@
-import { SignIn } from "@clerk/nextjs";
+import { Suspense } from "react";
 
-import { clerkAppearance } from "@/lib/clerk-appearance";
+import SignInForm from "./SignInForm";
 
 export default function SignInPage() {
-  return (
-    <main className="flex min-h-screen items-center justify-center bg-background">
-      <SignIn appearance={clerkAppearance} />
-    </main>
-  );
+  return <Suspense><SignInForm /></Suspense>;
 }

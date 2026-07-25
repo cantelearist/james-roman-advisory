@@ -1,34 +1,26 @@
-import { auth, currentUser } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { getDb, ensureVaultTables } from "@/lib/db";
-
-function isStaff(role?: string) {
-  return role === "admin" || role === "advisor";
-}
+import { getAuthContext, isStaff } from "@/lib/auth";
 
 export async function GET() {
-  const { userId } = await auth();
-  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-  const user = await currentUser();
-  const role = user?.publicMetadata?.role as string | undefined;
+  const context = await getAuthContext();
+  if (!context) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const { userId, role } = context;
 
   await ensureVaultTables();
   const sql = getDb();
 
   const clients = isStaff(role)
     ? await sql`SELECT * FROM clients ORDER BY created_at DESC`
-    : await sql`SELECT * FROM clients WHERE clerk_user_id = ${userId}`;
+    : await sql`SELECT * FROM clients WHERE user_id = ${userId}`;
 
   return NextResponse.json({ clients });
 }
 
 export async function POST(req: Request) {
-  const { userId } = await auth();
-  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-  const user = await currentUser();
-  const role = user?.publicMetadata?.role as string | undefined;
+  const context = await getAuthContext();
+  if (!context) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const { role } = context;
   if (!isStaff(role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const body = await req.json();
