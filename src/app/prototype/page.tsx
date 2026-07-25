@@ -335,6 +335,7 @@ export default function Prototype() {
   const [introComplete, setIntroComplete] = useState(false);
   const [navVisible, setNavVisible] = useState(true);
   const lastScrollY = useRef(0);
+  const navInteractionUntil = useRef(0);
 
   const handleIntroComplete = useCallback(() => setIntroComplete(true), []);
 
@@ -342,6 +343,11 @@ export default function Prototype() {
   useEffect(() => {
     const onScroll = () => {
       const y = window.scrollY;
+      if (Date.now() < navInteractionUntil.current) {
+        setNavVisible(true);
+        lastScrollY.current = y;
+        return;
+      }
       if (y < 80) { setNavVisible(true); }
       else if (y > lastScrollY.current + 8) { setNavVisible(false); }
       else if (y < lastScrollY.current - 8) { setNavVisible(true); }
@@ -385,7 +391,17 @@ export default function Prototype() {
           <nav className="hidden md:flex items-center gap-10 text-[0.86rem] uppercase tracking-[0.2em]"
             style={{ color:TITAN, opacity:0.7 }}>
             {[["The Practice","#the-process"],["Origin","#origin"],["The Cornerstone","#cornerstones"],["Private Office","#private-office"]].map(([l,h]) => (
-              <a key={l} href={h} className="hover:opacity-100 transition-opacity duration-400">{l}</a>
+              <a
+                key={l}
+                href={h}
+                onClick={() => {
+                  navInteractionUntil.current = Date.now() + 5000;
+                  setNavVisible(true);
+                }}
+                className="hover:opacity-100 transition-opacity duration-400"
+              >
+                {l}
+              </a>
             ))}
           </nav>
           <Link href={contactPath} data-cursor="inquire"
