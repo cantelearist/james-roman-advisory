@@ -125,7 +125,10 @@ export default function VaultPage() {
   }, []);
 
   useEffect(() => {
-    fetchDocuments();
+    const timer = window.setTimeout(() => {
+      void fetchDocuments();
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [fetchDocuments]);
 
   // ─── Upload ────────────────────────────────────────────────────────────

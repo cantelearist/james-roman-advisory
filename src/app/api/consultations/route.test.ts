@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+const sql = vi.fn();
+vi.mock("@/lib/db", () => ({
+  ensureConsultationsTable: vi.fn().mockResolvedValue(undefined),
+  getDb: vi.fn(() => sql),
+}));
+
 import { POST } from "./route";
 
 const validBody = {

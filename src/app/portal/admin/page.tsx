@@ -77,7 +77,10 @@ export default function AdminPage() {
   }
 
   useEffect(() => {
-    loadInvitations();
+    const timer = window.setTimeout(() => {
+      void loadInvitations();
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
   async function handleSendInvite(e: React.FormEvent) {

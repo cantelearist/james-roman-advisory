@@ -422,7 +422,10 @@ export default function MattersPage() {
     setLoading(false);
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => { void load(); }, 0);
+    return () => window.clearTimeout(timer);
+  }, [load]);
 
   function handleStatusUpdate(id: string, status: MatterStatus) {
     setMatters((prev) => prev.map((m) => m.id === id ? { ...m, status } : m));

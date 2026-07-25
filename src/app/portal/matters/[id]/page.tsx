@@ -670,7 +670,10 @@ export default function MatterDetailPage() {
     setLoading(false);
   }, [id, router]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => { void load(); }, 0);
+    return () => window.clearTimeout(timer);
+  }, [load]);
 
   useEffect(() => {
     if (activeTab === "timeline") {
