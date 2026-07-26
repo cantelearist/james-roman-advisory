@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { getDb, ensureVaultTables, logMatterEvent } from "@/lib/db";
-import { getAuthContext, isStaff } from "@/lib/auth";
+import {
+  authorizeCapability,
+  getPortalAccessSummary,
+} from "@/lib/access-control";
+import { getAuthContext } from "@/lib/auth";
 
 export async function POST(
   req: Request,
@@ -8,10 +12,13 @@ export async function POST(
 ) {
   const context = await getAuthContext();
   if (!context) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const { userId, role } = context;
-  if (!isStaff(role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const { userId } = context;
 
   const { id } = await params;
+  const access = await getPortalAccessSummary(context);
+  if (!(await authorizeCapability(context, access, "timeline.manage", { matterId: id }))) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
   const body = await req.json();
   const { content } = body;
 
@@ -30,6 +37,7 @@ export async function POST(
     userId,
     eventType: "note_added",
     content: content.trim(),
+    visibility: "internal",
   });
 
   const [event] = await sql`

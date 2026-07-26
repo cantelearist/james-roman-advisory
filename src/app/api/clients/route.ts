@@ -1,18 +1,37 @@
 import { NextResponse } from "next/server";
 import { getDb, ensureVaultTables } from "@/lib/db";
-import { getAuthContext, isStaff } from "@/lib/auth";
+import {
+  authorizeCapability,
+  getPortalAccessSummary,
+  hasCapability,
+} from "@/lib/access-control";
+import { getAuthContext } from "@/lib/auth";
 
 export async function GET() {
   const context = await getAuthContext();
   if (!context) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { userId, role } = context;
+  const access = await getPortalAccessSummary(context);
+  if (!hasCapability(access, "clients.view")) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
 
   await ensureVaultTables();
   const sql = getDb();
 
-  const clients = isStaff(role)
+  const clients = role === "super_admin" || (role === "admin" && access.scope === "global")
     ? await sql`SELECT * FROM clients ORDER BY created_at DESC`
-    : await sql`SELECT * FROM clients WHERE user_id = ${userId}`;
+    : await sql`
+        SELECT DISTINCT c.*
+        FROM clients c
+        JOIN matters m ON m.client_id = c.id
+        JOIN engagement_memberships em
+          ON em.matter_id = m.id
+          AND em.user_id = ${userId}
+          AND em.status = 'active'
+          AND (em.expires_at IS NULL OR em.expires_at > NOW())
+        ORDER BY c.created_at DESC
+      `;
 
   return NextResponse.json({ clients });
 }
@@ -20,8 +39,16 @@ export async function GET() {
 export async function POST(req: Request) {
   const context = await getAuthContext();
   if (!context) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const { role } = context;
-  if (!isStaff(role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const access = await getPortalAccessSummary(context);
+  if (!(await authorizeCapability(context, access, "clients.manage"))) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+  if (context.role !== "super_admin" && access.scope !== "global") {
+    return NextResponse.json(
+      { error: "Creating a client requires global client authority" },
+      { status: 403 },
+    );
+  }
 
   const body = await req.json();
   const { name, email, phone, notes } = body;

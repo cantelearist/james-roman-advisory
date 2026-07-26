@@ -1,6 +1,6 @@
 # Source of Truth — James Roman Advisory
 
-Updated 2026-07-24.
+Updated 2026-07-26.
 
 ## Stack
 
@@ -14,16 +14,22 @@ Updated 2026-07-24.
 
 ## Auth model
 
-`src/lib/auth.ts` owns session creation, lookup, revocation, and role guards.
+`src/lib/auth.ts` owns session creation, lookup, revocation, and account-status checks.
+`src/lib/access-control.ts` owns capability, access-scope, engagement-membership,
+and resource-audience decisions.
 `src/lib/password.ts` owns scrypt password hashing and verification.
 `src/proxy.ts` performs the unauthenticated fast-path redirect; protected API
-handlers call `getAuthContext()` and enforce role and ownership checks themselves.
+handlers call `getAuthContext()` and enforce capability and scope checks themselves.
 
 ## Database tables
 
-- `users` — account identity, role, and password hash
+- `users` — account identity, role family, status, and password hash
 - `auth_sessions` — hashed opaque session tokens and expiry
-- `auth_invitations` — hashed, expiring invitation tokens
+- `auth_invitations` — hashed invitations with role, profile, scope, and engagement
+- `permission_profiles` — reusable Admin and Contractor capabilities
+- `user_permission_assignments` — profile and global/assigned scope
+- `engagement_memberships` — revocable, optionally expiring engagement access
+- `access_audit_events` — append-only access-administration history
 - `consultations` — public intake records
 - `clients` — client records linked by `user_id`
 - `properties`, `matters`, `matter_events`, `documents`, `file_access_events`

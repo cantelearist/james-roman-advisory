@@ -74,11 +74,13 @@ JR Design/
 ```
 
 ### Data model (initial)
-- `users` — first-party account identity, password hash, role (`client`, `advisor`, `admin`)
+- `users` — first-party identity, password hash, status, and role family (`super_admin`, `admin`, `contractor`, `client`)
+- `permission_profiles` — reusable Super Admin-defined capabilities for Admin and Contractor users
+- `user_permission_assignments` — Permission Profile plus global or assigned engagement scope
 - `clients` — household/entity record, billing entity, primary contact
 - `engagements` — belongs to client, status, scope, jurisdiction, principals (advisor IDs)
-- `engagement_members` — join table for access (a client may have spouse/attorney with scoped access)
-- `documents` — engagement-scoped, S3 key, classification (`endorsement`, `inspection`, `report`, `contract`), retention class
+- `engagement_memberships` — canonical, revocable, optionally expiring access to one Engagement
+- `documents` — engagement-scoped, storage key, classification, audience, publication status, retention class
 - `invoices` — engagement-scoped, line items, status, Stripe invoice ID
 - `messages` — threaded per engagement, author, body, attachments, read receipts
 - `requests` — client-initiated, type, status, SLA target, assignee
@@ -86,7 +88,7 @@ JR Design/
 - `audit_log` — append-only, every read/write of sensitive data (user_id, action, resource, ip_hash, ua_hash, timestamp)
 - `consents` — record of accepted policies/versions per user
 
-Row-level security: every portal table filtered by `engagement_members` membership at the DB layer (Postgres RLS), not just app code.
+Current application policy: every protected route enforces a named capability and active Engagement Membership. Database RLS remains required before any secondary application or reporting tool receives direct database access.
 
 ---
 
@@ -123,7 +125,7 @@ AI is integrated **from intake forward**, but never speaks on the firm's behalf 
 ### Technical controls
 - **Encryption:** TLS 1.3 only; AES-256 at rest; per-document envelope encryption for sensitive classes (endorsements, inspection reports).
 - **Auth:** MFA required for all portal users (TOTP + passkey preferred). Session timeout 30 min idle / 12 hr absolute. Device list visible to user.
-- **Access control:** RLS at DB; no service role used from edge functions; advisor access scoped per engagement.
+- **Access control:** fixed Super Admin authority, Super Admin-defined Admin/Contractor Permission Profiles, engagement-scoped memberships, and explicit resource audiences. Add Postgres RLS before direct database access is expanded.
 - **Logging:** Append-only audit log; logs scrubbed of secrets; 1-year retention hot, longer cold storage.
 - **Backups:** Daily snapshot, 30-day retention, restore drill quarterly.
 - **No third-party trackers on `/portal/*`.** Marketing routes get a single privacy-respecting analytics tool (Vercel Analytics or Plausible) with cookie banner where required.

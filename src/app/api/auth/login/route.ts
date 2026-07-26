@@ -28,7 +28,7 @@ export async function POST(request: Request) {
   await ensureAuthTables();
   const sql = getDb();
   const rows = await sql`
-    SELECT id, name, email, role, password_hash
+    SELECT id, name, email, role, password_hash, status
     FROM users
     WHERE LOWER(email) = LOWER(${parsed.data.email})
     LIMIT 1
@@ -36,6 +36,9 @@ export async function POST(request: Request) {
   const row = rows[0] as Record<string, unknown> | undefined;
   if (!row || !(await verifyPassword(parsed.data.password, String(row.password_hash ?? "")))) {
     return NextResponse.json({ error: "Invalid email or password" }, { status: 401 });
+  }
+  if (row.status !== "active") {
+    return NextResponse.json({ error: "This account is suspended" }, { status: 403 });
   }
 
   const { token, expiresAt } = await createSession(String(row.id));

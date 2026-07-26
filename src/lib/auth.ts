@@ -3,8 +3,9 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { ensureAuthTables, getDb } from "@/lib/db";
+import type { UserRole } from "@/lib/data-model";
 
-export type Role = "admin" | "advisor" | "client";
+export type Role = UserRole;
 export type AuthUser = { id: string; name: string; email: string; role: Role };
 export type AuthContext = { userId: string; user: AuthUser; role: Role };
 
@@ -68,6 +69,7 @@ export async function getAuthContext(): Promise<AuthContext | null> {
     JOIN users u ON u.id = s.user_id
     WHERE s.token_hash = ${hashSessionToken(token)}
       AND s.expires_at > NOW()
+      AND u.status = 'active'
     LIMIT 1
   `;
   if (rows.length === 0) return null;
@@ -83,12 +85,8 @@ export async function revokeCurrentSession(): Promise<void> {
   await sql`DELETE FROM auth_sessions WHERE token_hash = ${hashSessionToken(token)}`;
 }
 
-export function isStaff(role?: Role): boolean {
-  return role === "admin" || role === "advisor";
-}
-
-export function isAdmin(role?: Role): boolean {
-  return role === "admin";
+export function isSuperAdmin(role?: Role): boolean {
+  return role === "super_admin";
 }
 
 export async function requireAuth(): Promise<string> {
@@ -97,17 +95,16 @@ export async function requireAuth(): Promise<string> {
   return context.userId;
 }
 
-export async function requireStaff(): Promise<AuthContext> {
+export async function requireAuthContext(): Promise<AuthContext> {
   const context = await getAuthContext();
   if (!context) redirect("/sign-in");
-  if (!isStaff(context.role)) redirect("/portal");
   return context;
 }
 
-export async function requireAdmin(): Promise<AuthContext> {
+export async function requireSuperAdmin(): Promise<AuthContext> {
   const context = await getAuthContext();
   if (!context) redirect("/sign-in");
-  if (!isAdmin(context.role)) redirect("/portal");
+  if (!isSuperAdmin(context.role)) redirect("/portal");
   return context;
 }
 

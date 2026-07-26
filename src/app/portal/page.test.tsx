@@ -1,10 +1,34 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { PortalAccessProvider } from "@/components/portal/access-provider";
+import type { PortalAccessSummary } from "@/lib/access-control";
 import PortalPreview from "./page";
 
 describe("Portal preview page", () => {
   const fetchMock = vi.fn<typeof fetch>();
+  const superAdminAccess: PortalAccessSummary = {
+    role: "super_admin",
+    capabilities: ["engagements.view", "documents.view", "users.invite", "access.manage"],
+    scope: "global",
+    permissionProfile: null,
+  };
+
+  function renderPortal(access = superAdminAccess) {
+    return render(
+      <PortalAccessProvider
+        user={{
+          id: "user-1",
+          name: "Portal User",
+          email: "portal@example.com",
+          role: access.role,
+        }}
+        access={access}
+      >
+        <PortalPreview />
+      </PortalAccessProvider>,
+    );
+  }
 
   beforeEach(() => {
     vi.stubGlobal("fetch", fetchMock);
@@ -44,12 +68,12 @@ describe("Portal preview page", () => {
   });
 
   it("renders the secure file room identity and status details", () => {
-    render(<PortalPreview />);
+    renderPortal();
 
     expect(screen.getByText("Private Office")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Engagements" })).toHaveAttribute("href", "/portal/matters");
     expect(screen.getByRole("link", { name: "Vault" })).toHaveAttribute("href", "/portal/vault");
-    expect(screen.getByRole("link", { name: "Admin" })).toHaveAttribute("href", "/portal/admin");
+    expect(screen.getByRole("link", { name: "Super Admin" })).toHaveAttribute("href", "/portal/admin");
 
     return waitFor(() => {
       expect(screen.getByText("Active engagements")).toBeInTheDocument();
@@ -58,13 +82,27 @@ describe("Portal preview page", () => {
     });
   });
 
-  it("renders portal document, request, invoice, and advisor thread surfaces", () => {
-    render(<PortalPreview />);
+  it("renders the engagement and document surfaces returned by the APIs", () => {
+    renderPortal();
 
     return waitFor(() => {
       expect(screen.getByText("Recent documents")).toBeInTheDocument();
       expect(screen.getByText("Remediation protocol redline.pdf")).toBeInTheDocument();
       expect(screen.getByText("Documents in vault")).toBeInTheDocument();
     });
+  });
+
+  it("does not expose administration navigation to a client", async () => {
+    renderPortal({
+      role: "client",
+      capabilities: ["engagements.view", "documents.view"],
+      scope: "assigned",
+      permissionProfile: null,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Malibu remediation oversight")).toBeInTheDocument();
+    });
+    expect(screen.queryByRole("link", { name: /Admin/i })).not.toBeInTheDocument();
   });
 });

@@ -38,7 +38,7 @@ export default function SignUpForm() {
       <div className="w-full max-w-md border border-[#c9b58a]/15 bg-[#0d0f14] p-8 shadow-2xl">
         <p className="mb-3 text-[0.68rem] uppercase tracking-[0.28em] text-[#c9b58a]">Private Office</p>
         <h1 className="mb-2 font-heading text-3xl font-light">Create your account</h1>
-        <p className="mb-8 text-sm leading-6 text-[#b2a898]/70">Use an invitation from the advisory team, or create a client account.</p>
+        <p className="mb-8 text-sm leading-6 text-[#b2a898]/70">Use the invitation issued for your engagement or Private Office role.</p>
         <form className="space-y-5" onSubmit={submit}>
           <label className="block text-xs uppercase tracking-[0.18em] text-[#b2a898]">Name<input className="mt-2 w-full border border-[#c9b58a]/20 bg-transparent px-3 py-3 text-sm normal-case tracking-normal text-[#ece6d6] outline-none focus:border-[#c9b58a]" autoComplete="name" required value={name} onChange={(event) => setName(event.target.value)} /></label>
           <label className="block text-xs uppercase tracking-[0.18em] text-[#b2a898]">Email<input className="mt-2 w-full border border-[#c9b58a]/20 bg-transparent px-3 py-3 text-sm normal-case tracking-normal text-[#ece6d6] outline-none focus:border-[#c9b58a]" type="email" autoComplete="email" required readOnly={Boolean(invitedEmail)} value={email} onChange={(event) => setEmail(event.target.value)} /></label>

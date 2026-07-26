@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
-import { getAuthContext, isStaff } from "@/lib/auth";
+import {
+  authorizeCapability,
+  getPortalAccessSummary,
+} from "@/lib/access-control";
+import { getAuthContext } from "@/lib/auth";
 import { renderRcaPdf } from "@/lib/pdf";
 
 export const runtime = "nodejs";
@@ -38,7 +42,8 @@ export async function POST(req: NextRequest) {
 
   const context = await getAuthContext();
   if (!context) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!isStaff(context.role)) {
+  const access = await getPortalAccessSummary(context);
+  if (!(await authorizeCapability(context, access, "documents.generate_pdf"))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

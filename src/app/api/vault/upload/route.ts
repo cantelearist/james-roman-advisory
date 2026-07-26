@@ -7,7 +7,7 @@
  *   - name        string (optional — defaults to original filename)
  *
  * Auth: first-party session required.
- *   - Staff (admin/advisor): may upload to any client's matter.
+ *   - Global Admin/Super Admin: may upload to any client's engagement.
  *   - Client: must have an existing, admin-provisioned client record.
  *             Auto-creation of client records is NOT permitted here.
  *             If a matter_id is supplied, it must belong to this client.
@@ -17,7 +17,12 @@
  */
 import { NextResponse } from "next/server";
 
-import { getAuthContext, isStaff } from "@/lib/auth";
+import {
+  authorizeCapability,
+  getPortalAccessSummary,
+  hasCapability,
+} from "@/lib/access-control";
+import { getAuthContext } from "@/lib/auth";
 import { ensureVaultTables, getDb, logFileAccess } from "@/lib/db";
 import {
   ALLOWED_MIME_TYPES,
@@ -38,17 +43,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     const { userId, user, role } = context;
-
-    // Deny users with no assigned role. All legitimate users are provisioned
-    // via the admin invite flow before they can upload anything.
-    if (!role) {
-      return NextResponse.json(
-        { error: "Forbidden: account not provisioned" },
-        { status: 403 }
-      );
+    const access = await getPortalAccessSummary(context);
+    if (!hasCapability(access, "documents.upload")) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
-
-    const callerIsStaff = isStaff(role);
+    const globalOperator = role === "super_admin" || (role === "admin" && access.scope === "global");
 
     // ── Parse multipart ──────────────────────────────────────────────────────
     const formData = await request.formData();
@@ -56,6 +55,7 @@ export async function POST(request: Request) {
     const category = (formData.get("category") as string) || "other";
     const matterId = (formData.get("matter_id") as string) || null;
     const customName = formData.get("name") as string | null;
+    const requestedVisibility = formData.get("visibility") as string | null;
 
     if (!file) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
@@ -81,26 +81,28 @@ export async function POST(request: Request) {
 
     let clientId: string;
 
-    if (callerIsStaff) {
-      // Staff may upload on behalf of any client. matter_id is the anchor.
-      // If no matter_id, a client_id must be provided in the form; fall back
-      // to a staff-owned "unassigned" record if needed.
+    if (matterId) {
+      const allowed = await authorizeCapability(
+        context,
+        access,
+        "documents.upload",
+        { matterId },
+      );
+      if (!allowed) {
+        return NextResponse.json({ error: "Matter not found" }, { status: 404 });
+      }
+      const matterRows = await sql`
+        SELECT client_id FROM matters WHERE id = ${matterId}
+      `;
+      if (matterRows.length === 0) {
+        return NextResponse.json({ error: "Matter not found" }, { status: 404 });
+      }
+      clientId = matterRows[0].client_id as string;
+    } else if (globalOperator) {
       const staffClientId = formData.get("client_id") as string | null;
-
-      if (matterId) {
-        // Resolve client from the matter
-        const matterRows = await sql`
-          SELECT client_id FROM matters WHERE id = ${matterId}
-        `;
-        if (matterRows.length === 0) {
-          return NextResponse.json({ error: "Matter not found" }, { status: 404 });
-        }
-        clientId = matterRows[0].client_id as string;
-      } else if (staffClientId) {
+      if (staffClientId) {
         clientId = staffClientId;
       } else {
-        // Staff self-upload without a matter — use staff's own client record,
-        // creating one if needed (acceptable for staff, not for clients).
         const rows = await sql`
           INSERT INTO clients (id, user_id, name, email)
           VALUES (gen_random_uuid()::TEXT, ${userId}, ${user.name}, ${user.email})
@@ -110,31 +112,10 @@ export async function POST(request: Request) {
         clientId = rows[0].id as string;
       }
     } else {
-      // Client role: must have a pre-existing, admin-provisioned client record.
-      // Auto-creation is NOT allowed — it would bypass the invite-only model.
-      const clientRows = await sql`
-        SELECT id FROM clients WHERE user_id = ${userId}
-      `;
-      if (clientRows.length === 0) {
-        return NextResponse.json(
-          { error: "Forbidden: client record not found" },
-          { status: 403 }
-        );
-      }
-      clientId = clientRows[0].id as string;
-
-      // If a matter_id is provided, verify the matter belongs to this client.
-      if (matterId) {
-        const matterRows = await sql`
-          SELECT id FROM matters WHERE id = ${matterId} AND client_id = ${clientId}
-        `;
-        if (matterRows.length === 0) {
-          return NextResponse.json(
-            { error: "Forbidden: matter not found or does not belong to this client" },
-            { status: 403 }
-          );
-        }
-      }
+      return NextResponse.json(
+        { error: "Select an engagement before uploading a document" },
+        { status: 400 },
+      );
     }
 
     // ── Build blob path ──────────────────────────────────────────────────────
@@ -155,14 +136,29 @@ export async function POST(request: Request) {
     // to the client. All downloads go through the authenticated proxy at
     // /api/vault/documents/[id].
     const docName = customName?.trim() || file.name;
+    const canPublish = hasCapability(access, "documents.publish");
+    const visibility =
+      canPublish && ["internal", "contractor", "client"].includes(requestedVisibility ?? "")
+        ? requestedVisibility
+        : role === "client"
+          ? "client"
+          : role === "contractor"
+            ? "contractor"
+            : "internal";
+    const publicationStatus =
+      role === "contractor" && visibility === "client"
+        ? "pending_review"
+        : "published";
     const rows = await sql`
       INSERT INTO documents (
         id, matter_id, client_id, name, original_name,
-        category, blob_pathname, size_bytes, content_type, uploaded_by
+        category, blob_pathname, size_bytes, content_type, uploaded_by,
+        visibility, publication_status
       )
       VALUES (
         ${docId}, ${matterId}, ${clientId}, ${docName}, ${file.name},
-        ${category}, ${blob.pathname}, ${file.size}, ${file.type}, ${userId}
+        ${category}, ${blob.pathname}, ${file.size}, ${file.type}, ${userId},
+        ${visibility}, ${publicationStatus}
       )
       RETURNING id, name, original_name, category, size_bytes, content_type, created_at
     `;

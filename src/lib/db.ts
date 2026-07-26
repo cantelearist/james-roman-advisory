@@ -53,12 +53,52 @@ export async function ensureUsersTable() {
       id          TEXT PRIMARY KEY,
       name        TEXT NOT NULL,
       email       TEXT NOT NULL UNIQUE,
-      role        TEXT NOT NULL CHECK (role IN ('client', 'advisor', 'admin')),
+      role        TEXT NOT NULL CHECK (role IN ('super_admin', 'admin', 'contractor', 'client')),
+      status      TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'suspended')),
       password_hash TEXT,
       created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `;
   await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT`;
+  await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'active'`;
+  await sql`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conrelid = 'users'::regclass
+          AND conname = 'users_status_check'
+      ) THEN
+        ALTER TABLE users
+          ADD CONSTRAINT users_status_check
+          CHECK (status IN ('active', 'suspended'));
+      END IF;
+    END $$;
+  `;
+  await sql`
+    DO $$
+    BEGIN
+      IF EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conrelid = 'users'::regclass
+          AND conname = 'users_role_check'
+          AND pg_get_constraintdef(oid) NOT LIKE '%super_admin%'
+      ) THEN
+        ALTER TABLE users DROP CONSTRAINT users_role_check;
+        UPDATE users SET role = 'admin' WHERE role = 'advisor';
+        ALTER TABLE users
+          ADD CONSTRAINT users_role_check
+          CHECK (role IN ('super_admin', 'admin', 'contractor', 'client'));
+      END IF;
+    END $$;
+  `;
+  await sql`
+    UPDATE users
+    SET role = 'super_admin'
+    WHERE LOWER(email) = 'roman@jamesroman.la'
+      AND role <> 'super_admin'
+  `;
 }
 
 export async function ensureAuthTables() {
@@ -77,12 +117,50 @@ export async function ensureAuthTables() {
     CREATE TABLE IF NOT EXISTS auth_invitations (
       id         TEXT PRIMARY KEY,
       email      TEXT NOT NULL,
-      role       TEXT NOT NULL CHECK (role IN ('client', 'advisor', 'admin')),
+      role       TEXT NOT NULL CHECK (role IN ('admin', 'contractor', 'client')),
       token_hash TEXT NOT NULL UNIQUE,
+      permission_profile_id TEXT,
+      access_scope TEXT NOT NULL DEFAULT 'assigned',
+      matter_id TEXT,
       expires_at TIMESTAMPTZ NOT NULL,
       accepted_at TIMESTAMPTZ,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
+  `;
+  await sql`ALTER TABLE auth_invitations ADD COLUMN IF NOT EXISTS permission_profile_id TEXT`;
+  await sql`ALTER TABLE auth_invitations ADD COLUMN IF NOT EXISTS access_scope TEXT NOT NULL DEFAULT 'assigned'`;
+  await sql`ALTER TABLE auth_invitations ADD COLUMN IF NOT EXISTS matter_id TEXT`;
+  await sql`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conrelid = 'auth_invitations'::regclass
+          AND conname = 'auth_invitations_access_scope_check'
+      ) THEN
+        ALTER TABLE auth_invitations
+          ADD CONSTRAINT auth_invitations_access_scope_check
+          CHECK (access_scope IN ('global', 'assigned'));
+      END IF;
+    END $$;
+  `;
+  await sql`
+    DO $$
+    BEGIN
+      IF EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conrelid = 'auth_invitations'::regclass
+          AND conname = 'auth_invitations_role_check'
+          AND pg_get_constraintdef(oid) LIKE '%advisor%'
+      ) THEN
+        ALTER TABLE auth_invitations DROP CONSTRAINT auth_invitations_role_check;
+        UPDATE auth_invitations SET role = 'admin' WHERE role = 'advisor';
+        ALTER TABLE auth_invitations
+          ADD CONSTRAINT auth_invitations_role_check
+          CHECK (role IN ('admin', 'contractor', 'client'));
+      END IF;
+    END $$;
   `;
 }
 
@@ -171,8 +249,40 @@ export async function ensureVaultTables() {
       event_type  TEXT NOT NULL,
       content     TEXT,
       metadata    JSONB,
+      visibility  TEXT NOT NULL DEFAULT 'internal'
+        CHECK (visibility IN ('internal', 'contractor', 'client')),
       created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
+  `;
+  await sql`
+    ALTER TABLE matter_events
+    ADD COLUMN IF NOT EXISTS visibility TEXT NOT NULL DEFAULT 'internal'
+  `;
+  await sql`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conrelid = 'matter_events'::regclass
+          AND conname = 'matter_events_visibility_check'
+      ) THEN
+        ALTER TABLE matter_events
+          ADD CONSTRAINT matter_events_visibility_check
+          CHECK (visibility IN ('internal', 'contractor', 'client'));
+      END IF;
+    END $$;
+  `;
+  await sql`
+    UPDATE matter_events
+    SET visibility = 'client'
+    WHERE event_type IN (
+      'created',
+      'status_changed',
+      'document_uploaded',
+      'document_downloaded',
+      'client_access_granted'
+    )
+      AND visibility = 'internal'
   `;
 
   // documents — files stored in Vercel Blob, associated with a matter
@@ -188,8 +298,43 @@ export async function ensureVaultTables() {
       size_bytes    BIGINT,
       content_type  TEXT,
       uploaded_by   TEXT NOT NULL,
+      visibility    TEXT NOT NULL DEFAULT 'client'
+        CHECK (visibility IN ('internal', 'contractor', 'client')),
+      publication_status TEXT NOT NULL DEFAULT 'published'
+        CHECK (publication_status IN ('pending_review', 'published')),
       created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
+  `;
+  await sql`
+    ALTER TABLE documents
+    ADD COLUMN IF NOT EXISTS visibility TEXT NOT NULL DEFAULT 'client'
+  `;
+  await sql`
+    ALTER TABLE documents
+    ADD COLUMN IF NOT EXISTS publication_status TEXT NOT NULL DEFAULT 'published'
+  `;
+  await sql`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conrelid = 'documents'::regclass
+          AND conname = 'documents_visibility_check'
+      ) THEN
+        ALTER TABLE documents
+          ADD CONSTRAINT documents_visibility_check
+          CHECK (visibility IN ('internal', 'contractor', 'client'));
+      END IF;
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conrelid = 'documents'::regclass
+          AND conname = 'documents_publication_status_check'
+      ) THEN
+        ALTER TABLE documents
+          ADD CONSTRAINT documents_publication_status_check
+          CHECK (publication_status IN ('pending_review', 'published'));
+      END IF;
+    END $$;
   `;
 
   // file_access_events — immutable audit log of every upload, download, view, delete
@@ -206,6 +351,178 @@ export async function ensureVaultTables() {
   `;
 }
 
+const ADMIN_OPERATIONS_PERMISSIONS = [
+  "users.invite",
+  "clients.view",
+  "clients.manage",
+  "engagements.view",
+  "engagements.create",
+  "engagements.update",
+  "engagements.assign",
+  "documents.view",
+  "documents.upload",
+  "documents.publish",
+  "documents.delete",
+  "documents.generate_pdf",
+  "timeline.view",
+  "timeline.internal_view",
+  "timeline.manage",
+  "messages.view",
+  "messages.send",
+  "messages.internal_view",
+  "contracts.view",
+  "contracts.manage",
+  "finance.view",
+  "finance.manage",
+  "audit.view",
+] as const;
+
+const CONTRACTOR_STANDARD_PERMISSIONS = [
+  "engagements.view",
+  "documents.view",
+  "documents.upload",
+  "timeline.view",
+  "messages.view",
+  "messages.send",
+] as const;
+
+/**
+ * Ensures the hybrid role/capability model exists and backfills legacy client
+ * ownership into explicit engagement memberships.
+ */
+export async function ensureAccessControlTables() {
+  await ensureAuthTables();
+  await ensureVaultTables();
+  const sql = getDb();
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS permission_profiles (
+      id          TEXT PRIMARY KEY,
+      name        TEXT NOT NULL,
+      role_type   TEXT NOT NULL CHECK (role_type IN ('admin', 'contractor')),
+      permissions JSONB NOT NULL DEFAULT '[]'::JSONB,
+      is_system   BOOLEAN NOT NULL DEFAULT FALSE,
+      created_by  TEXT,
+      created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS user_permission_assignments (
+      user_id     TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      permission_profile_id TEXT NOT NULL REFERENCES permission_profiles(id),
+      access_scope TEXT NOT NULL DEFAULT 'assigned'
+        CHECK (access_scope IN ('global', 'assigned')),
+      assigned_by TEXT,
+      assigned_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS engagement_memberships (
+      id          TEXT PRIMARY KEY DEFAULT gen_random_uuid()::TEXT,
+      matter_id   TEXT NOT NULL REFERENCES matters(id) ON DELETE CASCADE,
+      user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      member_role TEXT NOT NULL CHECK (member_role IN ('admin', 'contractor', 'client')),
+      status      TEXT NOT NULL DEFAULT 'active'
+        CHECK (status IN ('active', 'revoked')),
+      expires_at  TIMESTAMPTZ,
+      assigned_by TEXT,
+      created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (matter_id, user_id)
+    )
+  `;
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS access_audit_events (
+      id          TEXT PRIMARY KEY DEFAULT gen_random_uuid()::TEXT,
+      actor_id    TEXT NOT NULL,
+      action      TEXT NOT NULL,
+      target_user_id TEXT,
+      matter_id   TEXT,
+      metadata    JSONB,
+      created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
+
+  await sql`
+    INSERT INTO permission_profiles (id, name, role_type, permissions, is_system)
+    VALUES (
+      'profile_admin_operations',
+      'Operations Admin',
+      'admin',
+      CAST(${JSON.stringify(ADMIN_OPERATIONS_PERMISSIONS)} AS JSONB),
+      TRUE
+    )
+    ON CONFLICT (id) DO NOTHING
+  `;
+  await sql`
+    INSERT INTO permission_profiles (id, name, role_type, permissions, is_system)
+    VALUES (
+      'profile_contractor_standard',
+      'Engagement Contractor',
+      'contractor',
+      CAST(${JSON.stringify(CONTRACTOR_STANDARD_PERMISSIONS)} AS JSONB),
+      TRUE
+    )
+    ON CONFLICT (id) DO NOTHING
+  `;
+
+  await sql`
+    INSERT INTO user_permission_assignments (
+      user_id,
+      permission_profile_id,
+      access_scope,
+      assigned_by
+    )
+    SELECT
+      u.id,
+      'profile_admin_operations',
+      'global',
+      'system:migration'
+    FROM users u
+    WHERE u.role = 'admin'
+    ON CONFLICT (user_id) DO NOTHING
+  `;
+  await sql`
+    INSERT INTO user_permission_assignments (
+      user_id,
+      permission_profile_id,
+      access_scope,
+      assigned_by
+    )
+    SELECT
+      u.id,
+      'profile_contractor_standard',
+      'assigned',
+      'system:migration'
+    FROM users u
+    WHERE u.role = 'contractor'
+    ON CONFLICT (user_id) DO NOTHING
+  `;
+
+  await sql`
+    INSERT INTO engagement_memberships (
+      matter_id,
+      user_id,
+      member_role,
+      assigned_by
+    )
+    SELECT
+      m.id,
+      c.user_id,
+      'client',
+      'system:migration'
+    FROM matters m
+    JOIN clients c ON c.id = m.client_id
+    JOIN users u ON u.id = c.user_id
+    WHERE c.user_id IS NOT NULL
+    ON CONFLICT (matter_id, user_id) DO NOTHING
+  `;
+}
+
 /** Log a matter timeline event. Fire-and-forget — does not throw. */
 export async function logMatterEvent(opts: {
   matterId: string;
@@ -213,19 +530,21 @@ export async function logMatterEvent(opts: {
   eventType: MatterEventType;
   content?: string;
   metadata?: Record<string, unknown>;
+  visibility?: "internal" | "contractor" | "client";
 }) {
   try {
     const sql = getDb();
     const id = crypto.randomUUID();
     await sql`
-      INSERT INTO matter_events (id, matter_id, user_id, event_type, content, metadata)
+      INSERT INTO matter_events (id, matter_id, user_id, event_type, content, metadata, visibility)
       VALUES (
         ${id},
         ${opts.matterId},
         ${opts.userId},
         ${opts.eventType},
         ${opts.content ?? null},
-        ${opts.metadata ? JSON.stringify(opts.metadata) : null}
+        ${opts.metadata ? JSON.stringify(opts.metadata) : null},
+        ${opts.visibility ?? "internal"}
       )
     `;
   } catch {

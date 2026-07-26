@@ -18,8 +18,8 @@ type SeedUser = {
 
 const SEED_USERS: SeedUser[] = [
   { id: "usr_admin_01",    name: "System Admin", email: "admin@jamesroman.la",   role: "admin"   },
-  { id: "usr_adv_stephen", name: "Stephen",      email: "stephen@jamesroman.la", role: "advisor" },
-  { id: "usr_adv_roman",   name: "Roman",        email: "roman@jamesroman.la",   role: "advisor" },
+  { id: "usr_adv_stephen", name: "Stephen",      email: "stephen@jamesroman.la", role: "admin" },
+  { id: "usr_adv_roman",   name: "Roman",        email: "roman@jamesroman.la",   role: "super_admin" },
   { id: "usr_client_demo", name: "Demo Client",  email: "demo@client.test",      role: "client"  },
 ];
 
