@@ -58,7 +58,7 @@ describe("ConsultationForm", () => {
     ).toHaveTextContent("Request Submitted");
   });
 
-  it("shows server validation errors as alerts", async () => {
+  it("shows the exact server field error as an alert", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue({
@@ -74,8 +74,37 @@ describe("ConsultationForm", () => {
     const user = await fillForm();
     await user.click(screen.getByRole("button", { name: /submit request/i }));
 
+    expect(await screen.findByRole("alert")).toHaveTextContent("Use a valid email address");
+  });
+
+  it("blocks invalid client input and explains the rejected field", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ConsultationForm />);
+
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText("Name"), "Private Client");
+    await user.type(screen.getByLabelText("Email"), "client@example.com");
+    await user.type(screen.getByLabelText("Primary market"), "Malibu");
+    await user.type(screen.getByLabelText("Matter type"), "Review");
+    await user.type(screen.getByLabelText("Brief context"), "Too short");
+    await user.click(screen.getByRole("button", { name: /submit request/i }));
+
+    expect(fetchMock).not.toHaveBeenCalled();
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Please review the highlighted fields.",
+      "Brief context should be at least 20 characters",
+    );
+  });
+
+  it("shows a recoverable error when the request cannot reach the server", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline")));
+    render(<ConsultationForm />);
+
+    const user = await fillForm();
+    await user.click(screen.getByRole("button", { name: /submit request/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "The request could not be submitted. Please try again.",
     );
   });
 });
