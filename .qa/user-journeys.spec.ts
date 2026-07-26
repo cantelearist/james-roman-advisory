@@ -45,7 +45,7 @@ test("consultation form submits valid data", async ({ page }) => {
     "We need owner-side advisory for a post-fire remediation review on a private coastal property.",
   );
   await page.getByRole("button", { name: /Submit request/i }).click();
-  await expect(page.locator('p[role="status"]')).toContainText(/Request received/i);
+  await expect(page.locator('p[role="status"]')).toContainText("Request Submitted");
 });
 
 test("private office entry points to the protected portal", async ({ page }) => {

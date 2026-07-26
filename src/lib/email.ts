@@ -2,7 +2,7 @@ import { Resend } from "resend";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const FROM = "James Roman Advisory <notifications@jamesroman.la>";
+const FROM = "James Roman Advisory <roman@jamesroman.la>";
 
 // ─── Templates ────────────────────────────────────────────────────────────────
 
@@ -159,7 +159,7 @@ export async function sendConsultationNotification(
   // Lazy-init so missing key never throws at module load time
   const resend = new Resend(process.env.RESEND_API_KEY);
   const notificationEmail =
-    process.env.NOTIFICATION_EMAIL ?? "advisory@jamesroman.la";
+    process.env.NOTIFICATION_EMAIL ?? "roman@jamesroman.la";
 
   const receivedAt = new Date().toLocaleString("en-US", {
     timeZone: "America/Los_Angeles",

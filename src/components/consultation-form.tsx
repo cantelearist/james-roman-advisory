@@ -59,7 +59,7 @@ export function ConsultationForm({ variant = "card", className }: ConsultationFo
     form.reset();
     setState({
       status: "success",
-      message: result.message ?? "Request received. The advisory team will review it privately.",
+      message: "Request Submitted",
     });
   }
 

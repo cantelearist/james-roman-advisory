@@ -34,13 +34,13 @@ describe("sendConsultationNotification", () => {
 
     expect(resendSend).toHaveBeenCalledWith(
       expect.objectContaining({
-        to: ["advisory@jamesroman.la"],
+        to: ["roman@jamesroman.la"],
         subject: expect.stringContaining(data.referenceId),
       }),
     );
     expect(console.info).toHaveBeenCalledWith("email.sent", {
       referenceId: data.referenceId,
-      to: "advisory@jamesroman.la",
+      to: "roman@jamesroman.la",
     });
   });
 

@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
   if (process.env.RESEND_API_KEY) {
     const resend = new Resend(process.env.RESEND_API_KEY);
     const { error } = await resend.emails.send({
-      from: "James Roman Advisory <notifications@jamesroman.la>",
+      from: "James Roman Advisory <roman@jamesroman.la>",
       to: [email],
       subject: "Your James Roman Advisory Private Office invitation",
       html: `<p>You have been invited to the James Roman Advisory Private Office.</p><p><a href="${inviteUrl}">Create your secure account</a></p><p>This invitation expires in seven days.</p>`,

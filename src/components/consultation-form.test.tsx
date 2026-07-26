@@ -55,7 +55,7 @@ describe("ConsultationForm", () => {
     });
     expect(
       await screen.findByRole("status"),
-    ).toHaveTextContent("private review record has been created");
+    ).toHaveTextContent("Request Submitted");
   });
 
   it("shows server validation errors as alerts", async () => {
