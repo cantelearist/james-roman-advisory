@@ -47,3 +47,31 @@ _Avoid_: Permission flag, role check
 **Resource Audience**:
 The group allowed to receive an Engagement File item: internal operators, assigned Contractors, or the Client.
 _Avoid_: Visibility toggle, public
+
+**Second Factor**:
+A time-limited proof from an enrolled authenticator app, required after password verification for every Super Admin, Admin, and Contractor session.
+_Avoid_: Security code, email code
+
+**Recovery Token**:
+A single-use, short-lived credential sent to a User's verified email address to replace a forgotten password. A successful reset revokes every existing session.
+_Avoid_: Reset link, magic link
+
+**Message**:
+An immutable correspondence entry inside one Engagement File, addressed to a Resource Audience.
+_Avoid_: Chat, comment
+
+**Invoice**:
+An issued request for payment tied to one Engagement. Its original line items and amount remain immutable after issue.
+_Avoid_: Bill, estimate
+
+**Payment**:
+A recorded settlement attempt against an Invoice. Provider-confirmed status, not the browser redirect, is authoritative.
+_Avoid_: Charge
+
+**Change Order**:
+A separately numbered amendment to an accepted contract or issued Invoice. Acceptance preserves the original record and may produce a supplemental Invoice.
+_Avoid_: Invoice edit, revision
+
+**Notification**:
+An auditable delivery attempt informing an authorized User about an Engagement File event. A Notification does not grant access to the underlying record.
+_Avoid_: Alert, blast

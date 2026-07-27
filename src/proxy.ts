@@ -5,7 +5,7 @@ import { SESSION_COOKIE } from "@/lib/auth";
 
 const STAGING_HOSTNAMES = ["staging.jamesroman.la"];
 const PUBLIC_EXACT = new Set(["/", "/robots.txt", "/sitemap.xml"]);
-const PUBLIC_PREFIXES = ["/prototype", "/prototype2", "/sign-in", "/sign-up", "/api/auth", "/api/consultations", "/api/seed"];
+const PUBLIC_PREFIXES = ["/prototype", "/prototype2", "/sign-in", "/sign-up", "/forgot-password", "/reset-password", "/mfa", "/api/auth", "/api/consultations", "/api/seed", "/api/stripe/webhook"];
 
 function isPublicPath(pathname: string): boolean {
   return PUBLIC_EXACT.has(pathname) || PUBLIC_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));

@@ -31,6 +31,8 @@ import {
   uploadToVault,
   vaultPathname,
 } from "@/lib/vault";
+import { notifyEngagementMembers } from "@/lib/notifications";
+import type { ResourceAudience } from "@/lib/data-model";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -137,9 +139,9 @@ export async function POST(request: Request) {
     // /api/vault/documents/[id].
     const docName = customName?.trim() || file.name;
     const canPublish = hasCapability(access, "documents.publish");
-    const visibility =
+    const visibility: ResourceAudience =
       canPublish && ["internal", "contractor", "client"].includes(requestedVisibility ?? "")
-        ? requestedVisibility
+        ? requestedVisibility as ResourceAudience
         : role === "client"
           ? "client"
           : role === "contractor"
@@ -172,6 +174,18 @@ export async function POST(request: Request) {
       ipAddress: request.headers.get("x-forwarded-for") ?? undefined,
       userAgent: request.headers.get("user-agent") ?? undefined,
     });
+
+    if (matterId) {
+      await notifyEngagementMembers({
+        matterId,
+        actorId: userId,
+        audience: visibility,
+        eventType: "document_uploaded",
+        subject: "New document in your Private Office",
+        preview: docName,
+        path: `/portal/matters/${matterId}?section=documents`,
+      });
+    }
 
     return NextResponse.json({ document }, { status: 201 });
   } catch (err) {

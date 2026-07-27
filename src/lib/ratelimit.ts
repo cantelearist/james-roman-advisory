@@ -39,6 +39,9 @@ const LIMITERS: Record<string, { requests: number; window: `${number} s` | `${nu
   invite: { requests: 20, window: "1 h" },
   // Seed endpoint — 10 calls per hour per IP (defense-in-depth; SEED_KEY is the primary gate)
   seed: { requests: 10, window: "1 h" },
+  "auth-recovery": { requests: 5, window: "15 m" },
+  "auth-reset": { requests: 8, window: "15 m" },
+  "auth-mfa": { requests: 10, window: "15 m" },
 };
 
 const limiterCache = new Map<string, Ratelimit>();

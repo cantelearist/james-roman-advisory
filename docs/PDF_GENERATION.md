@@ -18,5 +18,7 @@ unbounded server memory.
 }
 ```
 
-The reusable renderer lives in `src/lib/pdf.ts`, so invoice, contract, change
-order, and report workflows can share the same visual and validation path.
+The reusable renderer lives in `src/lib/pdf.ts`. Issued Invoices are rendered
+through `GET /api/invoices/[id]/pdf`; Change Orders are rendered through
+`GET /api/change-orders/[id]/pdf`. Both routes enforce engagement scope and
+return private, non-cacheable RCA-style PDF responses.

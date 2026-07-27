@@ -114,6 +114,46 @@ export async function ensureAuthTables() {
     )
   `;
   await sql`
+    CREATE TABLE IF NOT EXISTS auth_login_challenges (
+      id         TEXT PRIMARY KEY,
+      user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      token_hash TEXT NOT NULL UNIQUE,
+      purpose    TEXT NOT NULL CHECK (purpose IN ('verify_mfa', 'enroll_mfa')),
+      expires_at TIMESTAMPTZ NOT NULL,
+      consumed_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
+  await sql`
+    CREATE TABLE IF NOT EXISTS auth_mfa_methods (
+      user_id          TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      encrypted_secret TEXT NOT NULL,
+      enabled_at       TIMESTAMPTZ,
+      last_used_step   BIGINT,
+      created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
+  await sql`
+    CREATE TABLE IF NOT EXISTS auth_mfa_recovery_codes (
+      id         TEXT PRIMARY KEY,
+      user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      code_hash  TEXT NOT NULL UNIQUE,
+      used_at    TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
+  await sql`
+    CREATE TABLE IF NOT EXISTS password_reset_tokens (
+      id         TEXT PRIMARY KEY,
+      user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      token_hash TEXT NOT NULL UNIQUE,
+      expires_at TIMESTAMPTZ NOT NULL,
+      used_at    TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
+  await sql`
     CREATE TABLE IF NOT EXISTS auth_invitations (
       id         TEXT PRIMARY KEY,
       email      TEXT NOT NULL,
@@ -520,6 +560,133 @@ export async function ensureAccessControlTables() {
     JOIN users u ON u.id = c.user_id
     WHERE c.user_id IS NOT NULL
     ON CONFLICT (matter_id, user_id) DO NOTHING
+  `;
+}
+
+/** Ensures engagement correspondence, billing, and amendment records exist. */
+export async function ensureEngagementOperationsTables() {
+  await ensureAccessControlTables();
+  const sql = getDb();
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS engagement_messages (
+      id          TEXT PRIMARY KEY DEFAULT gen_random_uuid()::TEXT,
+      matter_id   TEXT NOT NULL REFERENCES matters(id) ON DELETE CASCADE,
+      sender_id   TEXT NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+      body        TEXT NOT NULL,
+      audience    TEXT NOT NULL CHECK (audience IN ('internal', 'contractor', 'client')),
+      created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
+  await sql`
+    CREATE INDEX IF NOT EXISTS engagement_messages_matter_created_idx
+    ON engagement_messages (matter_id, created_at)
+  `;
+  await sql`
+    CREATE TABLE IF NOT EXISTS notification_deliveries (
+      id              TEXT PRIMARY KEY DEFAULT gen_random_uuid()::TEXT,
+      user_id         TEXT REFERENCES users(id) ON DELETE SET NULL,
+      matter_id       TEXT REFERENCES matters(id) ON DELETE CASCADE,
+      event_type      TEXT NOT NULL,
+      recipient_email TEXT NOT NULL,
+      status          TEXT NOT NULL CHECK (status IN ('sent', 'failed', 'skipped')),
+      provider_id     TEXT,
+      error_code      TEXT,
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
+  await sql`
+    CREATE TABLE IF NOT EXISTS engagement_contracts (
+      id                    TEXT PRIMARY KEY DEFAULT gen_random_uuid()::TEXT,
+      matter_id             TEXT NOT NULL REFERENCES matters(id) ON DELETE CASCADE,
+      contract_number       TEXT NOT NULL UNIQUE,
+      title                 TEXT NOT NULL,
+      status                TEXT NOT NULL DEFAULT 'draft'
+        CHECK (status IN ('draft', 'issued', 'accepted', 'void')),
+      original_amount_cents BIGINT NOT NULL DEFAULT 0 CHECK (original_amount_cents >= 0),
+      currency              TEXT NOT NULL DEFAULT 'usd',
+      issued_at             TIMESTAMPTZ,
+      accepted_at           TIMESTAMPTZ,
+      created_by            TEXT NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+      created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
+  await sql`
+    CREATE TABLE IF NOT EXISTS invoices (
+      id                         TEXT PRIMARY KEY DEFAULT gen_random_uuid()::TEXT,
+      matter_id                  TEXT NOT NULL REFERENCES matters(id) ON DELETE CASCADE,
+      contract_id                TEXT REFERENCES engagement_contracts(id) ON DELETE SET NULL,
+      invoice_number             TEXT NOT NULL UNIQUE,
+      status                     TEXT NOT NULL DEFAULT 'draft'
+        CHECK (status IN ('draft', 'issued', 'processing', 'paid', 'void', 'overdue')),
+      currency                   TEXT NOT NULL DEFAULT 'usd',
+      subtotal_cents             BIGINT NOT NULL CHECK (subtotal_cents >= 0),
+      total_cents                BIGINT NOT NULL CHECK (total_cents >= 0),
+      due_date                   DATE,
+      issued_at                  TIMESTAMPTZ,
+      paid_at                    TIMESTAMPTZ,
+      stripe_checkout_session_id TEXT UNIQUE,
+      stripe_payment_intent_id   TEXT,
+      created_by                 TEXT NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+      created_at                 TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at                 TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
+  await sql`
+    CREATE TABLE IF NOT EXISTS invoice_line_items (
+      id          TEXT PRIMARY KEY DEFAULT gen_random_uuid()::TEXT,
+      invoice_id  TEXT NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
+      description TEXT NOT NULL,
+      quantity    INTEGER NOT NULL DEFAULT 1 CHECK (quantity > 0),
+      unit_amount_cents BIGINT NOT NULL CHECK (unit_amount_cents >= 0),
+      position    INTEGER NOT NULL DEFAULT 0
+    )
+  `;
+  await sql`
+    CREATE TABLE IF NOT EXISTS payments (
+      id                       TEXT PRIMARY KEY DEFAULT gen_random_uuid()::TEXT,
+      invoice_id               TEXT NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
+      provider                 TEXT NOT NULL DEFAULT 'stripe',
+      provider_payment_id      TEXT NOT NULL UNIQUE,
+      amount_cents             BIGINT NOT NULL CHECK (amount_cents >= 0),
+      currency                 TEXT NOT NULL DEFAULT 'usd',
+      status                   TEXT NOT NULL
+        CHECK (status IN ('processing', 'succeeded', 'failed', 'refunded')),
+      received_at              TIMESTAMPTZ,
+      created_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at               TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
+  await sql`
+    CREATE TABLE IF NOT EXISTS change_orders (
+      id                  TEXT PRIMARY KEY DEFAULT gen_random_uuid()::TEXT,
+      matter_id           TEXT NOT NULL REFERENCES matters(id) ON DELETE CASCADE,
+      source_contract_id  TEXT REFERENCES engagement_contracts(id) ON DELETE RESTRICT,
+      source_invoice_id   TEXT REFERENCES invoices(id) ON DELETE RESTRICT,
+      change_order_number TEXT NOT NULL UNIQUE,
+      title               TEXT NOT NULL,
+      description         TEXT NOT NULL,
+      amount_cents        BIGINT NOT NULL CHECK (amount_cents >= 0),
+      currency            TEXT NOT NULL DEFAULT 'usd',
+      status              TEXT NOT NULL DEFAULT 'draft'
+        CHECK (status IN ('draft', 'issued', 'accepted', 'rejected', 'void')),
+      issued_at           TIMESTAMPTZ,
+      accepted_at         TIMESTAMPTZ,
+      accepted_by         TEXT REFERENCES users(id) ON DELETE SET NULL,
+      supplemental_invoice_id TEXT REFERENCES invoices(id) ON DELETE SET NULL,
+      created_by          TEXT NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+      created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CHECK (source_contract_id IS NOT NULL OR source_invoice_id IS NOT NULL)
+    )
+  `;
+  await sql`
+    CREATE TABLE IF NOT EXISTS stripe_webhook_events (
+      event_id    TEXT PRIMARY KEY,
+      event_type  TEXT NOT NULL,
+      processed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
   `;
 }
 
