@@ -33,17 +33,22 @@ export async function GET(request: Request) {
 
   if (hasCapability(access, "engagements.view")) {
     const matters = await sql`
-      SELECT DISTINCT m.id, m.title, m.status, c.name AS client_name,
+      SELECT m.id, m.title, m.status, c.name AS client_name,
         p.address AS property_address
       FROM matters m
       JOIN clients c ON c.id = m.client_id
       LEFT JOIN properties p ON p.id = m.property_id
-      LEFT JOIN engagement_memberships em
-        ON em.matter_id = m.id
-        AND em.user_id = ${context.userId}
-        AND em.status = 'active'
-        AND (em.expires_at IS NULL OR em.expires_at > NOW())
-      WHERE (${global} OR em.id IS NOT NULL)
+      WHERE (
+          ${global}
+          OR EXISTS (
+            SELECT 1
+            FROM engagement_memberships em
+            WHERE em.matter_id = m.id
+              AND em.user_id = ${context.userId}
+              AND em.status = 'active'
+              AND (em.expires_at IS NULL OR em.expires_at > NOW())
+          )
+        )
         AND (
           m.title ILIKE ${pattern}
           OR c.name ILIKE ${pattern}
@@ -91,15 +96,21 @@ export async function GET(request: Request) {
 
   if (hasCapability(access, "documents.view")) {
     const documents = await sql`
-      SELECT DISTINCT d.id, d.name, d.matter_id, m.title AS matter_title
+      SELECT d.id, d.name, d.matter_id, m.title AS matter_title
       FROM documents d
       JOIN matters m ON m.id = d.matter_id
-      LEFT JOIN engagement_memberships em
-        ON em.matter_id = d.matter_id
-        AND em.user_id = ${context.userId}
-        AND em.status = 'active'
-        AND (em.expires_at IS NULL OR em.expires_at > NOW())
-      WHERE (${global} OR em.id IS NOT NULL OR d.uploaded_by = ${context.userId})
+      WHERE (
+          ${global}
+          OR d.uploaded_by = ${context.userId}
+          OR EXISTS (
+            SELECT 1
+            FROM engagement_memberships em
+            WHERE em.matter_id = d.matter_id
+              AND em.user_id = ${context.userId}
+              AND em.status = 'active'
+              AND (em.expires_at IS NULL OR em.expires_at > NOW())
+          )
+        )
         AND d.name ILIKE ${pattern}
         AND d.archived_at IS NULL
         AND (
@@ -124,15 +135,20 @@ export async function GET(request: Request) {
   if (hasCapability(access, "messages.view")) {
     const internal = hasCapability(access, "messages.internal_view");
     const messages = await sql`
-      SELECT DISTINCT msg.id, msg.matter_id, msg.body, m.title AS matter_title
+      SELECT msg.id, msg.matter_id, msg.body, m.title AS matter_title
       FROM engagement_messages msg
       JOIN matters m ON m.id = msg.matter_id
-      LEFT JOIN engagement_memberships em
-        ON em.matter_id = msg.matter_id
-        AND em.user_id = ${context.userId}
-        AND em.status = 'active'
-        AND (em.expires_at IS NULL OR em.expires_at > NOW())
-      WHERE (${global} OR em.id IS NOT NULL)
+      WHERE (
+          ${global}
+          OR EXISTS (
+            SELECT 1
+            FROM engagement_memberships em
+            WHERE em.matter_id = msg.matter_id
+              AND em.user_id = ${context.userId}
+              AND em.status = 'active'
+              AND (em.expires_at IS NULL OR em.expires_at > NOW())
+          )
+        )
         AND msg.body ILIKE ${pattern}
         AND (
           (${internal} AND msg.audience = 'internal')

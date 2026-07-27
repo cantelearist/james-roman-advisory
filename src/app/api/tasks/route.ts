@@ -44,7 +44,7 @@ export async function GET(request: Request) {
   const global = context.role === "super_admin"
     || (context.role === "admin" && access.scope === "global");
   const rows = await sql`
-    SELECT DISTINCT
+    SELECT
       t.id, t.matter_id, t.workflow_item_id, t.stage_key, t.title,
       t.description, t.status, t.priority, t.assignee_user_id, t.due_date,
       t.audience, t.position, t.completed_by, t.completed_at,
@@ -56,12 +56,17 @@ export async function GET(request: Request) {
     JOIN matters m ON m.id = t.matter_id
     LEFT JOIN users assignee ON assignee.id = t.assignee_user_id
     LEFT JOIN users creator ON creator.id = t.created_by
-    LEFT JOIN engagement_memberships em
-      ON em.matter_id = t.matter_id
-      AND em.user_id = ${context.userId}
-      AND em.status = 'active'
-      AND (em.expires_at IS NULL OR em.expires_at > NOW())
-    WHERE (${global} OR em.id IS NOT NULL)
+    WHERE (
+        ${global}
+        OR EXISTS (
+          SELECT 1
+          FROM engagement_memberships em
+          WHERE em.matter_id = t.matter_id
+            AND em.user_id = ${context.userId}
+            AND em.status = 'active'
+            AND (em.expires_at IS NULL OR em.expires_at > NOW())
+        )
+      )
       AND (${matterId}::TEXT IS NULL OR t.matter_id = ${matterId})
       AND (${mine} = FALSE OR t.assignee_user_id = ${context.userId})
     ORDER BY t.status = 'completed', t.due_date ASC NULLS LAST, t.position, t.created_at DESC
