@@ -50,17 +50,22 @@ export async function GET() {
 
   const tasks = hasCapability(access, "timeline.view")
     ? await sql`
-        SELECT DISTINCT t.id, t.matter_id, t.title, t.status, t.priority, t.due_date,
+        SELECT t.id, t.matter_id, t.title, t.status, t.priority, t.due_date,
           m.title AS matter_title, assignee.name AS assignee_name
         FROM engagement_tasks t
         JOIN matters m ON m.id = t.matter_id
         LEFT JOIN users assignee ON assignee.id = t.assignee_user_id
-        LEFT JOIN engagement_memberships em
-          ON em.matter_id = t.matter_id
-          AND em.user_id = ${context.userId}
-          AND em.status = 'active'
-          AND (em.expires_at IS NULL OR em.expires_at > NOW())
-        WHERE (${global} OR em.id IS NOT NULL)
+        WHERE (
+            ${global}
+            OR EXISTS (
+              SELECT 1
+              FROM engagement_memberships em
+              WHERE em.matter_id = t.matter_id
+                AND em.user_id = ${context.userId}
+                AND em.status = 'active'
+                AND (em.expires_at IS NULL OR em.expires_at > NOW())
+            )
+          )
           AND t.status NOT IN ('completed', 'cancelled')
           AND (
             t.assignee_user_id = ${context.userId}
