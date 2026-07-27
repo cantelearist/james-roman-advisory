@@ -4,6 +4,7 @@ import { z } from "zod";
 import { authorizeCapability, getPortalAccessSummary, hasCapability } from "@/lib/access-control";
 import { getAuthContext } from "@/lib/auth";
 import { ensureEngagementOperationsTables, getDb } from "@/lib/db";
+import { notifyEngagementMembers } from "@/lib/notifications";
 
 const schema = z.object({
   matterId: z.string().uuid(),
@@ -72,5 +73,16 @@ export async function POST(request: Request) {
     )
     RETURNING *
   `;
+  if (parsed.data.issue) {
+    await notifyEngagementMembers({
+      matterId: parsed.data.matterId,
+      actorId: context.userId,
+      audience: "client",
+      eventType: "contract_issued",
+      subject: `Contract ${String(rows[0].contract_number)} is ready`,
+      preview: parsed.data.title,
+      path: `/portal/finance?matter_id=${parsed.data.matterId}`,
+    });
+  }
   return NextResponse.json({ contract: rows[0] }, { status: 201 });
 }

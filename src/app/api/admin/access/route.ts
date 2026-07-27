@@ -28,6 +28,16 @@ const requestSchema = z.discriminatedUnion("action", [
     permissions: z.array(capabilitySchema).max(CAPABILITIES.length),
   }),
   z.object({
+    action: z.literal("update_profile"),
+    profileId: z.string().min(1),
+    name: z.string().trim().min(2).max(80),
+    permissions: z.array(capabilitySchema).max(CAPABILITIES.length),
+  }),
+  z.object({
+    action: z.literal("archive_profile"),
+    profileId: z.string().min(1),
+  }),
+  z.object({
     action: z.literal("configure_user"),
     userId: z.string().min(1),
     role: roleSchema,
@@ -71,7 +81,7 @@ export async function GET(): Promise<NextResponse> {
 
   await ensureAccessControlTables();
   const sql = getDb();
-  const [users, profiles, memberships, matters] = await Promise.all([
+  const [users, profiles, memberships, matters, auditEvents] = await Promise.all([
     sql`
       SELECT
         u.id,
@@ -79,6 +89,7 @@ export async function GET(): Promise<NextResponse> {
         u.email,
         u.role,
         u.status,
+        u.last_active_at AS "lastActiveAt",
         p.id AS "permissionProfileId",
         p.name AS "permissionProfileName",
         a.access_scope AS "accessScope"
@@ -95,9 +106,9 @@ export async function GET(): Promise<NextResponse> {
         u.name
     `,
     sql`
-      SELECT id, name, role_type AS "roleType", permissions, is_system AS "isSystem"
+      SELECT id, name, role_type AS "roleType", permissions, is_system AS "isSystem", status
       FROM permission_profiles
-      ORDER BY role_type, is_system DESC, name
+      ORDER BY status, role_type, is_system DESC, name
     `,
     sql`
       SELECT
@@ -117,6 +128,25 @@ export async function GET(): Promise<NextResponse> {
       JOIN clients c ON c.id = m.client_id
       ORDER BY m.updated_at DESC
     `,
+    sql`
+      SELECT
+        audit.id,
+        audit.actor_id AS "actorId",
+        actor.name AS "actorName",
+        audit.action,
+        audit.target_user_id AS "targetUserId",
+        target.name AS "targetUserName",
+        audit.matter_id AS "matterId",
+        matter.title AS "matterTitle",
+        audit.metadata,
+        audit.created_at AS "createdAt"
+      FROM access_audit_events audit
+      LEFT JOIN users actor ON actor.id = audit.actor_id
+      LEFT JOIN users target ON target.id = audit.target_user_id
+      LEFT JOIN matters matter ON matter.id = audit.matter_id
+      ORDER BY audit.created_at DESC
+      LIMIT 250
+    `,
   ]);
 
   return NextResponse.json({
@@ -124,6 +154,7 @@ export async function GET(): Promise<NextResponse> {
     profiles,
     memberships,
     matters,
+    auditEvents,
     assignableCapabilities: {
       admin: ADMIN_PROFILE_CAPABILITIES,
       contractor: CONTRACTOR_PROFILE_CAPABILITIES,
@@ -189,6 +220,74 @@ export async function POST(request: Request): Promise<NextResponse> {
     return NextResponse.json({ profile }, { status: 201 });
   }
 
+  if (input.action === "update_profile") {
+    const profiles = await sql`
+      SELECT id, role_type, is_system, status
+      FROM permission_profiles
+      WHERE id = ${input.profileId}
+      LIMIT 1
+    `;
+    const profile = profiles[0] as Record<string, unknown> | undefined;
+    if (!profile || profile.status === "archived") {
+      return NextResponse.json({ error: "Permission profile not found" }, { status: 404 });
+    }
+    const roleType = profile.role_type === "contractor" ? "contractor" : "admin";
+    const ceiling = profileCapabilityCeiling(roleType);
+    const permissions = [...new Set(input.permissions)].filter(
+      (capability): capability is Capability => ceiling.includes(capability),
+    );
+    const rows = await sql`
+      UPDATE permission_profiles
+      SET name = ${input.name},
+          permissions = CAST(${JSON.stringify(permissions)} AS JSONB),
+          updated_at = NOW()
+      WHERE id = ${input.profileId}
+      RETURNING id, name, role_type AS "roleType", permissions, is_system AS "isSystem", status
+    `;
+    await logAccessAudit({
+      actorId: auth.context.userId,
+      action: "permission_profile.updated",
+      metadata: { profileId: input.profileId, permissions },
+    });
+    return NextResponse.json({ profile: rows[0] });
+  }
+
+  if (input.action === "archive_profile") {
+    const profiles = await sql`
+      SELECT id, is_system
+      FROM permission_profiles
+      WHERE id = ${input.profileId}
+      LIMIT 1
+    `;
+    const profile = profiles[0] as Record<string, unknown> | undefined;
+    if (!profile) return NextResponse.json({ error: "Permission profile not found" }, { status: 404 });
+    if (profile.is_system) {
+      return NextResponse.json({ error: "System permission profiles cannot be archived" }, { status: 409 });
+    }
+    const assignments = await sql`
+      SELECT COUNT(*)::int AS count
+      FROM user_permission_assignments
+      WHERE permission_profile_id = ${input.profileId}
+    `;
+    if (Number(assignments[0]?.count ?? 0) > 0) {
+      return NextResponse.json({
+        error: "Reassign users from this profile before archiving it",
+        assignedUsers: Number(assignments[0]?.count ?? 0),
+      }, { status: 409 });
+    }
+    await sql`
+      UPDATE permission_profiles
+      SET status = 'archived', updated_at = NOW()
+      WHERE id = ${input.profileId}
+    `;
+    await logAccessAudit({
+      actorId: auth.context.userId,
+      action: "permission_profile.archived",
+      metadata: { profileId: input.profileId },
+    });
+    return NextResponse.json({ archived: true });
+  }
+
   if (input.action === "configure_user") {
     const rows = await sql`SELECT id, role FROM users WHERE id = ${input.userId} LIMIT 1`;
     const target = rows[0] as Record<string, unknown> | undefined;
@@ -212,6 +311,7 @@ export async function POST(request: Request): Promise<NextResponse> {
         FROM permission_profiles
         WHERE id = ${profileId}
           AND role_type = ${input.role}
+          AND status = 'active'
         LIMIT 1
       `;
       if (profiles.length === 0) {

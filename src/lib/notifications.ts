@@ -23,13 +23,33 @@ export async function notifyEngagementMembers(options: {
   matterId: string;
   actorId: string;
   audience: ResourceAudience;
-  eventType: "message_received" | "document_uploaded" | "invoice_issued" | "change_order_issued";
+  eventType:
+    | "message_received"
+    | "document_uploaded"
+    | "invoice_issued"
+    | "invoice_reminder"
+    | "contract_issued"
+    | "change_order_issued"
+    | "task_assigned"
+    | "workflow_blocked";
   subject: string;
   preview: string;
   path: string;
 }): Promise<{ sent: number; failed: number }> {
   await ensureEngagementOperationsTables();
   const sql = getDb();
+  const settingsRows = await sql`SELECT value FROM portal_settings WHERE key = 'workspace' LIMIT 1`;
+  const settings = settingsRows[0]?.value && typeof settingsRows[0].value === "object"
+    ? settingsRows[0].value as Record<string, unknown>
+    : {};
+  const preference = options.eventType === "message_received"
+    ? "notifyOnMessage"
+    : options.eventType === "document_uploaded"
+      ? "notifyOnDocument"
+      : ["invoice_issued", "invoice_reminder", "contract_issued", "change_order_issued"].includes(options.eventType)
+        ? "notifyOnInvoice"
+        : "notifyOnTask";
+  if (settings[preference] === false) return { sent: 0, failed: 0 };
   const rows = await sql`
     SELECT DISTINCT u.id, u.name, u.email, u.role
     FROM users u
@@ -58,6 +78,20 @@ export async function notifyEngagementMembers(options: {
   let sent = 0;
   let failed = 0;
   for (const recipient of recipients) {
+    await sql`
+      INSERT INTO portal_notifications (
+        id, user_id, matter_id, event_type, title, body, href
+      )
+      VALUES (
+        ${crypto.randomUUID()},
+        ${String(recipient.id)},
+        ${options.matterId},
+        ${options.eventType},
+        ${options.subject},
+        ${options.preview},
+        ${options.path}
+      )
+    `;
     let status: "sent" | "failed" | "skipped" = "skipped";
     let providerId: string | null = null;
     let errorCode: string | null = "email_not_configured";

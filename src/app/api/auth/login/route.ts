@@ -83,6 +83,7 @@ export async function POST(request: Request) {
   }
 
   const { token, expiresAt } = await createSession(String(row.id));
+  await sql`UPDATE users SET last_active_at = NOW() WHERE id = ${String(row.id)}`;
   const response = NextResponse.json({
     user: { id: row.id, name: row.name, email: row.email, role: row.role },
   });

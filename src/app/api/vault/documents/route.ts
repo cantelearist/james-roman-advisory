@@ -14,7 +14,7 @@ import {
   hasCapability,
   logAccessAudit,
 } from "@/lib/access-control";
-import { ensureVaultTables, getDb } from "@/lib/db";
+import { ensureEngagementOperationsTables, getDb } from "@/lib/db";
 import { getAuthContext } from "@/lib/auth";
 
 export const runtime = "nodejs";
@@ -31,11 +31,13 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    await ensureVaultTables();
+    await ensureEngagementOperationsTables();
     const sql = getDb();
 
     const url = new URL(request.url);
     const matterId = url.searchParams.get("matter_id");
+    const archived = url.searchParams.get("archived") === "1"
+      && hasCapability(access, "documents.publish");
     if (
       matterId
       && !(await authorizeCapability(context, access, "documents.view", { matterId }))
@@ -55,9 +57,11 @@ export async function GET(request: Request) {
             matter_id,
             visibility,
             publication_status,
+            archived_at,
             created_at
           FROM documents
           WHERE (${matterId}::TEXT IS NULL OR matter_id = ${matterId})
+            AND (${archived} = TRUE OR archived_at IS NULL)
           ORDER BY created_at DESC
         `
       : await sql`
@@ -71,6 +75,7 @@ export async function GET(request: Request) {
             d.matter_id,
             d.visibility,
             d.publication_status,
+            d.archived_at,
             d.created_at
           FROM documents d
           LEFT JOIN engagement_memberships em
@@ -81,6 +86,7 @@ export async function GET(request: Request) {
           WHERE
             (em.id IS NOT NULL OR d.uploaded_by = ${userId})
             AND (${matterId}::TEXT IS NULL OR d.matter_id = ${matterId})
+            AND d.archived_at IS NULL
           ORDER BY d.created_at DESC
         `;
     const visibleRows = rows.filter((document) =>

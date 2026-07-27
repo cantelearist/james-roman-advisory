@@ -4,6 +4,7 @@ import { z } from "zod";
 import { authorizeCapability, getPortalAccessSummary } from "@/lib/access-control";
 import { getAuthContext } from "@/lib/auth";
 import { ensureEngagementOperationsTables, getDb } from "@/lib/db";
+import { notifyEngagementMembers } from "@/lib/notifications";
 
 const schema = z.object({ action: z.enum(["issue", "accept", "reject", "void"]) });
 
@@ -113,6 +114,17 @@ export async function PATCH(
           updated_at = NOW()
       WHERE id = ${id}
     `;
+    if (parsed.data.action === "issue") {
+      await notifyEngagementMembers({
+        matterId,
+        actorId: context.userId,
+        audience: "client",
+        eventType: "change_order_issued",
+        subject: `Change order ${String(changeOrder.change_order_number)} requires review`,
+        preview: String(changeOrder.title),
+        path: `/portal/finance?matter_id=${matterId}`,
+      });
+    }
   }
   const updated = await sql`SELECT * FROM change_orders WHERE id = ${id} LIMIT 1`;
   return NextResponse.json({ changeOrder: updated[0] });

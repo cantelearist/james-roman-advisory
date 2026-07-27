@@ -45,6 +45,17 @@ export async function GET(request: Request) {
   const global = context.role === "super_admin" || (context.role === "admin" && access.scope === "global");
   const invoices = await sql`
     SELECT i.*, m.title AS matter_title, c.name AS client_name,
+      COALESCE((
+        SELECT json_agg(json_build_object(
+          'id', payment.id,
+          'status', payment.status,
+          'amount_cents', payment.amount_cents,
+          'received_at', payment.received_at,
+          'created_at', payment.created_at
+        ) ORDER BY payment.created_at DESC)
+        FROM payments payment
+        WHERE payment.invoice_id = i.id
+      ), '[]'::json) AS payments,
       COALESCE(
         json_agg(
           json_build_object(

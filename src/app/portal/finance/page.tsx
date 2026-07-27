@@ -1,273 +1,370 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
-import Link from "next/link";
-import { ArrowLeft, Download, Loader2 } from "lucide-react";
+import {
+  AlertTriangle,
+  Bell,
+  Check,
+  CircleDollarSign,
+  Download,
+  FilePlus2,
+  FileSignature,
+  Plus,
+  ReceiptText,
+  RefreshCw,
+  Search,
+  Send,
+  ShieldCheck,
+  Trash2,
+  X,
+} from "lucide-react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 import { usePortalAccess } from "@/components/portal/access-provider";
+import { EmptyState, PageHeader } from "@/components/portal/portal-ui";
 
-type Matter = { id: string; title: string };
+type Matter = { id: string; title: string; client_name?: string };
+type Payment = { id: string; status: string; amount_cents: string | number; received_at?: string | null; created_at: string };
 type Contract = {
-  id: string; matter_id: string; contract_number: string; title: string;
-  status: string; original_amount_cents: string | number;
+  id: string; matter_id: string; matter_title: string; contract_number: string; title: string;
+  status: string; original_amount_cents: string | number; issued_at?: string | null; created_at: string;
 };
 type Invoice = {
-  id: string; matter_id: string; invoice_number: string; status: string;
-  total_cents: string | number; due_date?: string; line_items: Array<{ description: string }>;
+  id: string; matter_id: string; matter_title: string; client_name: string;
+  invoice_number: string; status: string; total_cents: string | number; due_date?: string | null;
+  issued_at?: string | null; paid_at?: string | null; created_at: string;
+  line_items: Array<{ id: string; description: string; quantity: number; unit_amount_cents: string | number }>;
+  payments: Payment[];
 };
 type ChangeOrder = {
-  id: string; matter_id: string; change_order_number: string; title: string;
-  description: string; status: string; amount_cents: string | number;
-  source_contract_number?: string; source_invoice_number?: string;
+  id: string; matter_id: string; matter_title: string; change_order_number: string; title: string;
+  description: string; status: string; amount_cents: string | number; issued_at?: string | null; created_at: string;
+  source_contract_number?: string | null; source_invoice_number?: string | null;
 };
+type RecordType = "invoice" | "contract" | "change_order";
+type Action = { type: RecordType; id: string; action: string; title: string; consequence: string };
 
-const GOLD = "#c9b58a";
-const CREAM = "#ece6d6";
-const TITAN = "#b2a898";
-const CARD = "#0d0f14";
-
-function money(value: string | number) {
+function money(value: string | number): string {
   return (Number(value) / 100).toLocaleString("en-US", { style: "currency", currency: "USD" });
 }
 
+function formatDate(value?: string | null): string {
+  if (!value) return "—";
+  return new Date(value).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
+function aging(invoice: Invoice): string {
+  if (invoice.status === "paid") return "Paid";
+  if (!invoice.due_date) return "No due date";
+  const days = Math.ceil((new Date(invoice.due_date).getTime() - Date.now()) / 86_400_000);
+  if (days < 0) return `${Math.abs(days)}d overdue`;
+  if (days === 0) return "Due today";
+  return `Due in ${days}d`;
+}
+
 export default function FinancePage() {
-  const { can, user } = usePortalAccess();
+  const { can, access } = usePortalAccess();
   const [matters, setMatters] = useState<Matter[]>([]);
-  const [matterId, setMatterId] = useState("");
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [changeOrders, setChangeOrders] = useState<ChangeOrder[]>([]);
-  const [busy, setBusy] = useState("");
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [query, setQuery] = useState("");
+  const [matterId, setMatterId] = useState("");
+  const [status, setStatus] = useState("");
+  const [type, setType] = useState<"all" | RecordType>("all");
+  const [showCreate, setShowCreate] = useState<RecordType | null>(null);
+  const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
+  const [pendingAction, setPendingAction] = useState<Action | null>(null);
+  const [busy, setBusy] = useState("");
+  const [lineItems, setLineItems] = useState([{ description: "", quantity: 1, amount: "" }]);
+  const [now] = useState(() => Date.now());
 
-  const loadRecords = useCallback(async (id: string) => {
-    if (!id) return;
-    const query = `?matter_id=${encodeURIComponent(id)}`;
-    const requests: Promise<Response>[] = [
-      fetch(`/api/contracts${query}`),
-      fetch(`/api/invoices${query}`),
-      fetch(`/api/change-orders${query}`),
-    ];
-    const [contractResponse, invoiceResponse, changeOrderResponse] = await Promise.all(requests);
-    const [contractData, invoiceData, changeOrderData] = await Promise.all([
-      contractResponse.json(), invoiceResponse.json(), changeOrderResponse.json(),
-    ]);
-    setContracts(contractData.contracts ?? []);
-    setInvoices(invoiceData.invoices ?? []);
-    setChangeOrders(changeOrderData.changeOrders ?? []);
-  }, []);
-
-  useEffect(() => {
-    fetch("/api/matters").then((response) => response.json()).then((data) => {
-      const rows = data.matters ?? [];
-      setMatters(rows);
-      if (rows[0]) setMatterId(rows[0].id);
-    });
-  }, []);
-
-  useEffect(() => {
-    if (!matterId) return;
-    const timer = window.setTimeout(() => { void loadRecords(matterId); }, 0);
-    return () => window.clearTimeout(timer);
-  }, [matterId, loadRecords]);
-
-  async function submitContract(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const formElement = event.currentTarget;
-    const form = new FormData(formElement);
-    setBusy("contract");
+  const load = useCallback(async () => {
+    setLoading(true);
     setError("");
-    const response = await fetch("/api/contracts", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        matterId,
-        title: form.get("title"),
-        originalAmountCents: Math.round(Number(form.get("amount")) * 100),
-        issue: true,
-      }),
-    });
-    const result = await response.json();
-    if (!response.ok) setError(result.error ?? "Contract could not be created.");
-    else {
-      formElement.reset();
-      await loadRecords(matterId);
+    try {
+      const [matterResponse, contractResponse, invoiceResponse, changeOrderResponse] = await Promise.all([
+        fetch("/api/matters?limit=250", { cache: "no-store" }),
+        fetch("/api/contracts", { cache: "no-store" }),
+        fetch("/api/invoices", { cache: "no-store" }),
+        fetch("/api/change-orders", { cache: "no-store" }),
+      ]);
+      const [matterData, contractData, invoiceData, changeOrderData] = await Promise.all([
+        matterResponse.json(), contractResponse.json(), invoiceResponse.json(), changeOrderResponse.json(),
+      ]);
+      if (!invoiceResponse.ok) throw new Error(invoiceData.error ?? "Finance records could not be loaded.");
+      setMatters(matterData.matters ?? []);
+      setContracts(contractData.contracts ?? []);
+      setInvoices(invoiceData.invoices ?? []);
+      setChangeOrders(changeOrderData.changeOrders ?? []);
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "Finance records could not be loaded.");
+    } finally {
+      setLoading(false);
     }
-    setBusy("");
-  }
+  }, []);
 
-  async function submitInvoice(event: FormEvent<HTMLFormElement>) {
+  useEffect(() => {
+    const timeout = window.setTimeout(() => void load(), 0);
+    return () => window.clearTimeout(timeout);
+  }, [load]);
+
+  const records = useMemo(() => {
+    const rows = [
+      ...invoices.map((record) => ({ ...record, recordType: "invoice" as const, number: record.invoice_number, amount: record.total_cents })),
+      ...contracts.map((record) => ({ ...record, recordType: "contract" as const, number: record.contract_number, amount: record.original_amount_cents })),
+      ...changeOrders.map((record) => ({ ...record, recordType: "change_order" as const, number: record.change_order_number, amount: record.amount_cents })),
+    ];
+    return rows.filter((record) => {
+      if (type !== "all" && record.recordType !== type) return false;
+      if (matterId && record.matter_id !== matterId) return false;
+      if (status && record.status !== status) return false;
+      if (query && !`${record.number} ${record.matter_title} ${"title" in record ? record.title : ""}`.toLowerCase().includes(query.toLowerCase())) return false;
+      return true;
+    }).sort((a, b) => new Date(String(b.created_at)).getTime() - new Date(String(a.created_at)).getTime());
+  }, [changeOrders, contracts, invoices, matterId, query, status, type]);
+
+  const outstanding = invoices.filter((invoice) => ["issued", "processing", "overdue"].includes(invoice.status)).reduce((total, invoice) => total + Number(invoice.total_cents), 0);
+  const paid = invoices.filter((invoice) => invoice.status === "paid").reduce((total, invoice) => total + Number(invoice.total_cents), 0);
+  const overdue = invoices.filter((invoice) => invoice.status === "overdue" || (invoice.status === "issued" && invoice.due_date && new Date(invoice.due_date).getTime() < now));
+
+  async function createRecord(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const formElement = event.currentTarget;
-    const form = new FormData(formElement);
-    setBusy("invoice");
+    if (!showCreate) return;
+    const form = new FormData(event.currentTarget);
+    setBusy("create");
     setError("");
-    const response = await fetch("/api/invoices", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        matterId,
+    const issue = form.get("issue") === "on";
+    let endpoint = "";
+    let payload: Record<string, unknown> = {};
+    if (showCreate === "invoice") {
+      endpoint = "/api/invoices";
+      payload = {
+        matterId: form.get("matterId"),
         contractId: form.get("contractId") || null,
         dueDate: form.get("dueDate") || null,
-        issue: true,
-        lineItems: [{
-          description: form.get("description"),
-          quantity: 1,
-          unitAmountCents: Math.round(Number(form.get("amount")) * 100),
-        }],
-      }),
-    });
-    const result = await response.json();
-    if (!response.ok) setError(result.error ?? "Invoice could not be created.");
-    else {
-      formElement.reset();
-      await loadRecords(matterId);
-    }
-    setBusy("");
-  }
-
-  async function submitChangeOrder(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const formElement = event.currentTarget;
-    const form = new FormData(formElement);
-    const source = String(form.get("source"));
-    setBusy("change-order");
-    setError("");
-    const response = await fetch("/api/change-orders", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        matterId,
+        issue,
+        lineItems: lineItems.map((item) => ({
+          description: item.description,
+          quantity: Number(item.quantity),
+          unitAmountCents: Math.round(Number(item.amount) * 100),
+        })),
+      };
+    } else if (showCreate === "contract") {
+      endpoint = "/api/contracts";
+      payload = {
+        matterId: form.get("matterId"), title: form.get("title"),
+        originalAmountCents: Math.round(Number(form.get("amount")) * 100), issue,
+      };
+    } else {
+      endpoint = "/api/change-orders";
+      const source = String(form.get("source") ?? "");
+      payload = {
+        matterId: form.get("matterId"),
         sourceContractId: source.startsWith("contract:") ? source.slice(9) : null,
         sourceInvoiceId: source.startsWith("invoice:") ? source.slice(8) : null,
-        title: form.get("title"),
-        description: form.get("description"),
-        amountCents: Math.round(Number(form.get("amount")) * 100),
-        issue: true,
-      }),
+        title: form.get("title"), description: form.get("description"),
+        amountCents: Math.round(Number(form.get("amount")) * 100), issue,
+      };
+    }
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
     });
-    const result = await response.json();
-    if (!response.ok) setError(result.error ?? "Change order could not be created.");
+    const data = await response.json();
+    if (!response.ok) setError(data.error ?? "The financial record could not be created.");
     else {
-      formElement.reset();
-      await loadRecords(matterId);
+      setShowCreate(null);
+      setLineItems([{ description: "", quantity: 1, amount: "" }]);
+      setSuccess(issue ? "Record issued and notification queued." : "Draft saved for review.");
+      await load();
     }
     setBusy("");
   }
 
-  async function pay(invoiceId: string) {
-    setBusy(invoiceId);
-    const response = await fetch(`/api/invoices/${invoiceId}/checkout`, { method: "POST" });
-    const result = await response.json();
-    if (response.ok && result.url) window.location.assign(result.url);
-    else {
-      setError(result.error ?? "Checkout could not be opened.");
-      setBusy("");
-    }
-  }
-
-  async function decide(changeOrderId: string, action: "accept" | "reject") {
-    setBusy(changeOrderId);
-    const response = await fetch(`/api/change-orders/${changeOrderId}`, {
+  async function performAction() {
+    if (!pendingAction) return;
+    setBusy(pendingAction.id);
+    setError("");
+    const endpoint = pendingAction.type === "invoice" ? `/api/invoices/${pendingAction.id}`
+      : pendingAction.type === "contract" ? `/api/contracts/${pendingAction.id}`
+      : `/api/change-orders/${pendingAction.id}`;
+    const response = await fetch(endpoint, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action }),
+      body: JSON.stringify({ action: pendingAction.action }),
     });
-    const result = await response.json();
-    if (!response.ok) setError(result.error ?? "Decision could not be recorded.");
-    await loadRecords(matterId);
+    const data = await response.json();
+    if (!response.ok) setError(data.error ?? "The action could not be completed.");
+    else {
+      setSuccess(pendingAction.action === "remind" ? "Payment reminder queued." : "Financial record updated.");
+      setPendingAction(null);
+      await load();
+    }
     setBusy("");
+  }
+
+  async function pay(invoice: Invoice) {
+    setBusy(invoice.id);
+    const response = await fetch(`/api/invoices/${invoice.id}/checkout`, { method: "POST" });
+    const data = await response.json();
+    if (!response.ok) setError(data.error ?? "Secure checkout could not be opened.");
+    else window.location.href = data.url;
+    setBusy("");
+  }
+
+  function requestAction(action: Action) {
+    setPendingAction(action);
+  }
+
+  function canManage(recordType: RecordType): boolean {
+    return recordType === "invoice" ? can("finance.manage") : can("contracts.manage");
   }
 
   return (
-    <main className="min-h-screen bg-[#0a0b0e] px-6 py-10 text-[#ece6d6]">
-      <div className="mx-auto max-w-6xl">
-        <Link href="/portal" className="mb-8 flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-[#b2a898] opacity-60"><ArrowLeft size={12} /> Private Office</Link>
-        <div className="mb-9 flex flex-wrap items-end justify-between gap-5">
-          <div>
-            <p className="mb-2 text-[0.65rem] uppercase tracking-[0.3em]" style={{ color: GOLD }}>Engagement finance</p>
-            <h1 className="font-heading text-3xl font-light">Contracts, invoices and change orders</h1>
-          </div>
-          <select value={matterId} onChange={(event) => setMatterId(event.target.value)} className="min-w-64 border border-[#c9b58a]/20 bg-[#0d0f14] px-3 py-3 text-sm text-[#ece6d6]">
-            {matters.map((matter) => <option key={matter.id} value={matter.id}>{matter.title}</option>)}
-          </select>
-        </div>
-        {error && <p className="mb-6 border border-red-400/20 bg-red-950/20 p-4 text-sm text-red-300">{error}</p>}
+    <div className="portal-page">
+      <PageHeader
+        eyebrow="Contracts and billing"
+        title="Finance"
+        description="Draft, review, issue and reconcile engagement financial records."
+        actions={
+          <>
+            <button className="portal-secondary-button" onClick={load}><RefreshCw size={14} />Refresh</button>
+            {(can("finance.manage") || can("contracts.manage")) && <button className="portal-primary-button" onClick={() => setShowCreate(can("finance.manage") ? "invoice" : "contract")}><Plus size={15} />New record</button>}
+          </>
+        }
+      />
 
-        {can("contracts.manage") && (
-          <section className="mb-9 grid gap-4 lg:grid-cols-3">
-            <form onSubmit={submitContract} className="space-y-3 border p-5" style={{ borderColor: "rgba(201,181,138,.12)", background: CARD }}>
-              <h2 className="text-xs uppercase tracking-[0.2em]" style={{ color: GOLD }}>Issue contract record</h2>
-              <input name="title" required maxLength={200} placeholder="Contract title" className="w-full border border-[#c9b58a]/15 bg-transparent px-3 py-2 text-sm" />
-              <input name="amount" required min="0" step="0.01" type="number" placeholder="Original fee" className="w-full border border-[#c9b58a]/15 bg-transparent px-3 py-2 text-sm" />
-              <button disabled={busy === "contract"} className="text-xs uppercase tracking-[0.16em]" style={{ color: GOLD }}>{busy === "contract" ? "Issuing…" : "Issue contract"}</button>
-            </form>
-            <form onSubmit={submitInvoice} className="space-y-3 border p-5" style={{ borderColor: "rgba(201,181,138,.12)", background: CARD }}>
-              <h2 className="text-xs uppercase tracking-[0.2em]" style={{ color: GOLD }}>Issue invoice</h2>
-              <input name="description" required maxLength={500} placeholder="Line item" className="w-full border border-[#c9b58a]/15 bg-transparent px-3 py-2 text-sm" />
-              <input name="amount" required min="0" step="0.01" type="number" placeholder="Amount" className="w-full border border-[#c9b58a]/15 bg-transparent px-3 py-2 text-sm" />
-              <input name="dueDate" type="date" className="w-full border border-[#c9b58a]/15 bg-transparent px-3 py-2 text-sm" />
-              <select name="contractId" className="w-full border border-[#c9b58a]/15 bg-[#0d0f14] px-3 py-2 text-sm"><option value="">No contract link</option>{contracts.map((item) => <option key={item.id} value={item.id}>{item.contract_number}</option>)}</select>
-              <button disabled={busy === "invoice"} className="text-xs uppercase tracking-[0.16em]" style={{ color: GOLD }}>{busy === "invoice" ? "Issuing…" : "Issue invoice"}</button>
-            </form>
-            <form onSubmit={submitChangeOrder} className="space-y-3 border p-5" style={{ borderColor: "rgba(201,181,138,.12)", background: CARD }}>
-              <h2 className="text-xs uppercase tracking-[0.2em]" style={{ color: GOLD }}>Issue change order</h2>
-              <select name="source" required className="w-full border border-[#c9b58a]/15 bg-[#0d0f14] px-3 py-2 text-sm">
-                <option value="">Original record</option>
-                {contracts.map((item) => <option key={item.id} value={`contract:${item.id}`}>{item.contract_number}</option>)}
-                {invoices.map((item) => <option key={item.id} value={`invoice:${item.id}`}>{item.invoice_number}</option>)}
-              </select>
-              <input name="title" required maxLength={200} placeholder="Change title" className="w-full border border-[#c9b58a]/15 bg-transparent px-3 py-2 text-sm" />
-              <textarea name="description" required maxLength={10000} placeholder="Scope and reason" rows={2} className="w-full border border-[#c9b58a]/15 bg-transparent px-3 py-2 text-sm" />
-              <input name="amount" required min="0" step="0.01" type="number" placeholder="Fee adjustment" className="w-full border border-[#c9b58a]/15 bg-transparent px-3 py-2 text-sm" />
-              <button disabled={busy === "change-order"} className="text-xs uppercase tracking-[0.16em]" style={{ color: GOLD }}>{busy === "change-order" ? "Issuing…" : "Issue change order"}</button>
-            </form>
-          </section>
-        )}
+      <section className="portal-finance-summary">
+        <div><CircleDollarSign size={18} /><span><strong>{money(outstanding)}</strong>Outstanding</span></div>
+        <div className={overdue.length ? "is-critical" : undefined}><AlertTriangle size={18} /><span><strong>{overdue.length}</strong>Overdue invoices</span></div>
+        <div><ShieldCheck size={18} /><span><strong>{money(paid)}</strong>Collected</span></div>
+        <div><ReceiptText size={18} /><span><strong>{invoices.filter((invoice) => invoice.status === "draft").length}</strong>Draft invoices</span></div>
+      </section>
 
-        <div className="grid gap-7 lg:grid-cols-2">
-          <section>
-            <h2 className="mb-3 text-xs uppercase tracking-[0.22em]" style={{ color: TITAN }}>Invoices</h2>
-            <div className="space-y-3">
-              {invoices.map((invoice) => (
-                <article key={invoice.id} className="border p-5" style={{ borderColor: "rgba(201,181,138,.12)", background: CARD }}>
-                  <div className="flex items-start justify-between gap-4">
-                    <div><p className="text-sm">{invoice.invoice_number}</p><p className="mt-1 text-xs uppercase tracking-[0.16em]" style={{ color: TITAN }}>{invoice.status}</p></div>
-                    <p className="font-heading text-xl" style={{ color: CREAM }}>{money(invoice.total_cents)}</p>
-                  </div>
-                  <div className="mt-4 flex items-center gap-4">
-                    <a href={`/api/invoices/${invoice.id}/pdf`} target="_blank" className="flex items-center gap-1 text-xs uppercase tracking-[0.14em]" style={{ color: GOLD }}><Download size={11} /> PDF</a>
-                    {["issued", "overdue"].includes(invoice.status) && (
-                      <button onClick={() => pay(invoice.id)} disabled={busy === invoice.id} className="text-xs uppercase tracking-[0.14em]" style={{ color: GOLD }}>{busy === invoice.id ? <Loader2 size={12} className="animate-spin" /> : "Pay securely"}</button>
-                    )}
-                  </div>
-                </article>
-              ))}
-              {invoices.length === 0 && <p className="border p-6 text-sm" style={{ borderColor: "rgba(201,181,138,.1)", color: TITAN }}>No invoices in this engagement.</p>}
-            </div>
-          </section>
-          <section>
-            <h2 className="mb-3 text-xs uppercase tracking-[0.22em]" style={{ color: TITAN }}>Change orders</h2>
-            <div className="space-y-3">
-              {changeOrders.map((item) => (
-                <article key={item.id} className="border p-5" style={{ borderColor: "rgba(201,181,138,.12)", background: CARD }}>
-                  <div className="flex items-start justify-between gap-4"><div><p className="text-sm">{item.change_order_number}</p><p className="mt-1 text-xs uppercase tracking-[0.16em]" style={{ color: TITAN }}>{item.status}</p></div><p className="font-heading text-xl">{money(item.amount_cents)}</p></div>
-                  <h3 className="mt-4 text-sm" style={{ color: GOLD }}>{item.title}</h3>
-                  <p className="mt-2 text-sm leading-6" style={{ color: TITAN }}>{item.description}</p>
-                  <div className="mt-4 flex gap-4">
-                    <a href={`/api/change-orders/${item.id}/pdf`} target="_blank" className="flex items-center gap-1 text-xs uppercase tracking-[0.14em]" style={{ color: GOLD }}><Download size={11} /> PDF</a>
-                    {user.role === "client" && item.status === "issued" && <>
-                      <button onClick={() => decide(item.id, "accept")} className="text-xs uppercase tracking-[0.14em] text-emerald-300">Accept</button>
-                      <button onClick={() => decide(item.id, "reject")} className="text-xs uppercase tracking-[0.14em] text-red-300">Reject</button>
-                    </>}
-                  </div>
-                </article>
-              ))}
-              {changeOrders.length === 0 && <p className="border p-6 text-sm" style={{ borderColor: "rgba(201,181,138,.1)", color: TITAN }}>No change orders in this engagement.</p>}
-            </div>
-          </section>
-        </div>
+      <div className="portal-finance-tabs">
+        {(["all", "invoice", "contract", "change_order"] as const).map((value) => <button key={value} className={type === value ? "is-active" : undefined} onClick={() => setType(value)}>{value === "all" ? "All records" : value.replace("_", " ")}<span>{value === "all" ? records.length : value === "invoice" ? invoices.length : value === "contract" ? contracts.length : changeOrders.length}</span></button>)}
       </div>
-    </main>
+
+      <div className="portal-board-toolbar">
+        <label className="portal-board-search"><Search size={15} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search number, engagement or title" /></label>
+        <select className="portal-toolbar-select" value={matterId} onChange={(event) => setMatterId(event.target.value)}><option value="">All engagements</option>{matters.map((matter) => <option key={matter.id} value={matter.id}>{matter.title}</option>)}</select>
+        <select className="portal-toolbar-select" value={status} onChange={(event) => setStatus(event.target.value)}><option value="">All statuses</option>{["draft", "issued", "processing", "paid", "overdue", "accepted", "rejected", "void"].map((item) => <option key={item}>{item}</option>)}</select>
+      </div>
+
+      {error && <div className="portal-inline-error" role="alert"><span>{error}</span><button onClick={() => setError("")}><X size={14} /></button></div>}
+      {success && <div className="portal-inline-success" role="status"><span>{success}</span><button onClick={() => setSuccess("")}><X size={14} /></button></div>}
+
+      <section className="portal-card portal-finance-table-wrap">
+        {loading ? (
+          <div className="portal-board-loading">{Array.from({ length: 8 }, (_, index) => <span key={index} />)}</div>
+        ) : records.length === 0 ? (
+          <EmptyState icon={CircleDollarSign} title="No financial records match this view" description="Draft and issued contracts, invoices and change orders will appear here." />
+        ) : (
+          <div className="portal-finance-table">
+            <div className="portal-finance-row portal-finance-header"><span>Record</span><span>Engagement</span><span>Status</span><span>Amount</span><span>Timing</span><span>Actions</span></div>
+            {records.map((record) => (
+              <div className="portal-finance-row" key={`${record.recordType}-${record.id}`}>
+                <button onClick={() => record.recordType === "invoice" && setSelectedInvoice(invoices.find((invoice) => invoice.id === record.id) ?? null)}>
+                  <span className="portal-finance-type">{record.recordType === "invoice" ? <ReceiptText size={15} /> : record.recordType === "contract" ? <FileSignature size={15} /> : <FilePlus2 size={15} />}</span>
+                  <div><strong>{record.number}</strong><small>{record.recordType.replace("_", " ")}{"title" in record && record.title ? ` · ${record.title}` : ""}</small></div>
+                </button>
+                <span>{record.matter_title}</span>
+                <span className={`portal-finance-status portal-finance-status-${record.status}`}>{record.status}</span>
+                <strong>{money(record.amount)}</strong>
+                <span>{record.recordType === "invoice" ? aging(record as Invoice) : formatDate("issued_at" in record ? record.issued_at : null)}</span>
+                <div className="portal-finance-actions">
+                  {record.recordType === "invoice" && <a href={`/api/invoices/${record.id}/pdf`} target="_blank" rel="noreferrer" className="portal-icon-button" aria-label={`Download ${record.number}`}><Download size={14} /></a>}
+                  {record.recordType === "change_order" && <a href={`/api/change-orders/${record.id}/pdf`} target="_blank" rel="noreferrer" className="portal-icon-button" aria-label={`Download ${record.number}`}><Download size={14} /></a>}
+                  {canManage(record.recordType) && record.status === "draft" && <button className="portal-secondary-button" onClick={() => requestAction({ type: record.recordType, id: record.id, action: "issue", title: `Issue ${record.number}?`, consequence: "The record becomes client-visible and an email notification will be queued." })}><Send size={12} />Issue</button>}
+                  {record.recordType === "invoice" && ["issued", "overdue"].includes(record.status) && (
+                    can("finance.manage")
+                      ? <button className="portal-secondary-button" onClick={() => requestAction({ type: "invoice", id: record.id, action: "remind", title: `Send reminder for ${record.number}?`, consequence: "A payment reminder will be sent to permitted client recipients." })}><Bell size={12} />Remind</button>
+                      : access.role === "client" ? <button className="portal-primary-button" onClick={() => pay(record as Invoice)} disabled={busy === record.id}>Pay securely</button> : null
+                  )}
+                  {record.recordType === "change_order" && record.status === "issued" && access.role === "client" && <><button className="portal-primary-button" onClick={() => requestAction({ type: "change_order", id: record.id, action: "accept", title: `Accept ${record.number}?`, consequence: "Acceptance is recorded permanently. A supplemental invoice may be created." })}><Check size={12} />Accept</button><button className="portal-secondary-button" onClick={() => requestAction({ type: "change_order", id: record.id, action: "reject", title: `Reject ${record.number}?`, consequence: "The rejection is recorded on this engagement." })}>Reject</button></>}
+                  {canManage(record.recordType) && !["paid", "accepted", "void"].includes(record.status) && <button className="portal-icon-button portal-danger-icon" onClick={() => requestAction({ type: record.recordType, id: record.id, action: "void", title: `Void ${record.number}?`, consequence: "The record will remain in the audit history but can no longer be acted upon." })} aria-label={`Void ${record.number}`}><Trash2 size={14} /></button>}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {showCreate && (
+        <div className="portal-dialog-overlay" role="dialog" aria-modal="true" aria-labelledby="create-finance-title">
+          <button className="portal-command-scrim" onClick={() => setShowCreate(null)} aria-label="Close create form" />
+          <section className="portal-dialog portal-finance-dialog">
+            <header><div><p className="portal-eyebrow">Financial record</p><h2 id="create-finance-title">Create {showCreate.replace("_", " ")}</h2></div><button className="portal-icon-button" onClick={() => setShowCreate(null)}><X size={18} /></button></header>
+            <div className="portal-segmented portal-record-type-switch">
+              {(["invoice", "contract", "change_order"] as const).filter((value) => canManage(value)).map((value) => <button key={value} className={showCreate === value ? "is-active" : undefined} onClick={() => setShowCreate(value)}>{value.replace("_", " ")}</button>)}
+            </div>
+            <form onSubmit={createRecord}>
+              <label className="portal-field"><span>Engagement</span><select name="matterId" required defaultValue={matterId}><option value="" disabled>Select engagement</option>{matters.map((matter) => <option key={matter.id} value={matter.id}>{matter.title}{matter.client_name ? ` · ${matter.client_name}` : ""}</option>)}</select></label>
+              {showCreate === "invoice" ? (
+                <>
+                  <div className="portal-line-item-heading"><span>Line items</span><button type="button" onClick={() => setLineItems((items) => [...items, { description: "", quantity: 1, amount: "" }])}><Plus size={12} />Add line</button></div>
+                  <div className="portal-line-items">
+                    {lineItems.map((item, index) => (
+                      <div key={index}>
+                        <label className="portal-field"><span>Description</span><input value={item.description} onChange={(event) => setLineItems((items) => items.map((line, lineIndex) => lineIndex === index ? { ...line, description: event.target.value } : line))} required /></label>
+                        <label className="portal-field"><span>Qty</span><input type="number" min="1" max="1000" value={item.quantity} onChange={(event) => setLineItems((items) => items.map((line, lineIndex) => lineIndex === index ? { ...line, quantity: Number(event.target.value) } : line))} required /></label>
+                        <label className="portal-field"><span>Unit amount</span><input type="number" min="0" step="0.01" value={item.amount} onChange={(event) => setLineItems((items) => items.map((line, lineIndex) => lineIndex === index ? { ...line, amount: event.target.value } : line))} required /></label>
+                        <button type="button" className="portal-icon-button" onClick={() => setLineItems((items) => items.length === 1 ? items : items.filter((_, lineIndex) => lineIndex !== index))} aria-label="Remove line item"><X size={14} /></button>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="portal-form-grid">
+                    <label className="portal-field"><span>Related contract</span><select name="contractId" defaultValue=""><option value="">None</option>{contracts.filter((contract) => !matterId || contract.matter_id === matterId).map((contract) => <option key={contract.id} value={contract.id}>{contract.contract_number} · {contract.title}</option>)}</select></label>
+                    <label className="portal-field"><span>Due date</span><input name="dueDate" type="date" /></label>
+                  </div>
+                  <div className="portal-invoice-total"><span>Invoice total</span><strong>{money(lineItems.reduce((sum, item) => sum + Number(item.quantity) * Math.round(Number(item.amount || 0) * 100), 0))}</strong></div>
+                </>
+              ) : showCreate === "contract" ? (
+                <div className="portal-form-grid">
+                  <label className="portal-field portal-field-wide"><span>Contract title</span><input name="title" required /></label>
+                  <label className="portal-field"><span>Original amount</span><input name="amount" type="number" min="0" step="0.01" required /></label>
+                </div>
+              ) : (
+                <>
+                  <label className="portal-field"><span>Original contract or invoice</span><select name="source" required defaultValue=""><option value="" disabled>Select source record</option>{contracts.map((contract) => <option key={contract.id} value={`contract:${contract.id}`}>{contract.contract_number} · {contract.title}</option>)}{invoices.map((invoice) => <option key={invoice.id} value={`invoice:${invoice.id}`}>{invoice.invoice_number} · {money(invoice.total_cents)}</option>)}</select></label>
+                  <label className="portal-field"><span>Change title</span><input name="title" required /></label>
+                  <label className="portal-field"><span>Description and justification</span><textarea name="description" rows={5} required /></label>
+                  <label className="portal-field"><span>Amount</span><input name="amount" type="number" min="0" step="0.01" required /></label>
+                </>
+              )}
+              <label className="portal-check-field portal-issue-checkbox"><input type="checkbox" name="issue" /><span><strong>Issue immediately</strong><small>Otherwise this record remains a private draft for review.</small></span></label>
+              <footer><button type="button" className="portal-secondary-button" onClick={() => setShowCreate(null)}>Cancel</button><button className="portal-primary-button" disabled={busy === "create"}>{busy === "create" ? "Saving…" : "Save record"}</button></footer>
+            </form>
+          </section>
+        </div>
+      )}
+
+      {selectedInvoice && (
+        <div className="portal-drawer-overlay" role="dialog" aria-modal="true" aria-labelledby="invoice-details-title">
+          <button className="portal-command-scrim" onClick={() => setSelectedInvoice(null)} aria-label="Close invoice details" />
+          <aside className="portal-drawer portal-invoice-drawer">
+            <header><div><p className="portal-eyebrow">Invoice record</p><h2 id="invoice-details-title">{selectedInvoice.invoice_number}</h2></div><button className="portal-icon-button" onClick={() => setSelectedInvoice(null)}><X size={18} /></button></header>
+            <section className="portal-invoice-overview"><span className={`portal-finance-status portal-finance-status-${selectedInvoice.status}`}>{selectedInvoice.status}</span><strong>{money(selectedInvoice.total_cents)}</strong><p>{selectedInvoice.matter_title} · {selectedInvoice.client_name}</p><small>{aging(selectedInvoice)}</small></section>
+            <section className="portal-invoice-lines"><header><span>Description</span><span>Qty</span><span>Amount</span></header>{selectedInvoice.line_items.map((item) => <div key={item.id}><span>{item.description}</span><span>{item.quantity}</span><strong>{money(Number(item.quantity) * Number(item.unit_amount_cents))}</strong></div>)}</section>
+            <section className="portal-payment-history"><h3>Payment activity</h3>{selectedInvoice.payments?.length ? selectedInvoice.payments.map((payment) => <div key={payment.id}><span className={`portal-finance-status portal-finance-status-${payment.status}`}>{payment.status}</span><strong>{money(payment.amount_cents)}</strong><time>{formatDate(payment.received_at || payment.created_at)}</time></div>) : <p>No payment attempts recorded.</p>}</section>
+            <a className="portal-secondary-button portal-invoice-download" href={`/api/invoices/${selectedInvoice.id}/pdf`} target="_blank" rel="noreferrer"><Download size={14} />Open invoice PDF</a>
+          </aside>
+        </div>
+      )}
+
+      {pendingAction && (
+        <div className="portal-dialog-overlay" role="alertdialog" aria-modal="true" aria-labelledby="finance-action-title">
+          <button className="portal-command-scrim" onClick={() => setPendingAction(null)} aria-label="Close confirmation" />
+          <section className="portal-dialog portal-save-dialog">
+            <header><div><p className="portal-eyebrow">Confirm action</p><h2 id="finance-action-title">{pendingAction.title}</h2></div><button className="portal-icon-button" onClick={() => setPendingAction(null)}><X size={18} /></button></header>
+            <form onSubmit={(event) => { event.preventDefault(); void performAction(); }}><p className="portal-dialog-copy">{pendingAction.consequence}</p><footer><button type="button" className="portal-secondary-button" onClick={() => setPendingAction(null)}>Cancel</button><button className={pendingAction.action === "void" || pendingAction.action === "reject" ? "portal-danger-button" : "portal-primary-button"} disabled={busy === pendingAction.id}>Confirm {pendingAction.action}</button></footer></form>
+          </section>
+        </div>
+      )}
+    </div>
   );
 }
