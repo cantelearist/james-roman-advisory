@@ -4,16 +4,17 @@
  *
  * SECURITY MODEL — READ THIS BEFORE CHANGING ANYTHING:
  *
- * Vercel Blob stores files with `access: "public"` because the standard tier
- * does not support per-blob auth. This means direct blob URLs are reachable
- * by anyone who knows the path. We mitigate this with two controls:
+ * Vercel Blob stores files with `access: "private"`. Blob content is never
+ * delivered directly to a browser. The authenticated application proxy reads
+ * the private object with the server-side Blob SDK and streams it only after
+ * the engagement and audience authorization checks pass.
  *
- *   1. UUID OBSCURITY: Every blob path contains three UUIDs:
+ *   1. PRIVATE STORAGE: Blob reads require the project-scoped storage token.
+ *
+ *   2. UUID NAMESPACING: Every blob path contains three UUIDs:
  *      vault/{clientId}/{matterId}/{docId}/{filename}
- *      Guessing a valid path requires finding four correct UUIDs (v4,
- *      each 2^122 space). This is computationally infeasible.
  *
- *   2. URL CONTAINMENT: blob.url and blob_pathname are NEVER returned to
+ *   3. URL CONTAINMENT: blob.url and blob_pathname are NEVER returned to
  *      clients in any API response. All client downloads must go through
  *      the authenticated proxy at /api/vault/documents/[id], which enforces
  *      ownership and writes an audit log entry before streaming.
@@ -23,11 +24,8 @@
  * Vercel Blob URL. The audit trail depends on this — direct URL access
  * bypasses logging entirely.
  *
- * Future: when private Vercel Blob access or presigned URLs become available
- * on the current plan, replace `access: "public"` with the private model and
- * generate time-limited signed URLs in the download proxy.
  */
-import { del, head, put } from "@vercel/blob";
+import { del, get, head, put } from "@vercel/blob";
 
 export const VAULT_PATH_PREFIX = "vault/";
 
@@ -39,12 +37,17 @@ export async function uploadToVault(opts: {
   contentType: string;
 }) {
   const blob = await put(opts.pathname, opts.file, {
-    access: "public", // URL is UUID-obscured; proxy download enforces auth
+    access: "private",
     contentType: opts.contentType,
     allowOverwrite: false,
   });
   // blob.url and blob.pathname are for server-side use ONLY.
   return blob;
+}
+
+/** Read a private vault file by pathname for authenticated proxy delivery. */
+export async function downloadFromVault(pathname: string) {
+  return get(pathname, { access: "private" });
 }
 
 /** Delete a file from Vercel Blob by its pathname. */

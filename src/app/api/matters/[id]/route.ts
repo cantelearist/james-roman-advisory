@@ -1,6 +1,12 @@
-import { auth, currentUser } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { getDb, ensureVaultTables, logMatterEvent, MatterStatus } from "@/lib/db";
+import {
+  authorizeCapability,
+  canReceiveAudience,
+  getPortalAccessSummary,
+  hasCapability,
+} from "@/lib/access-control";
+import { getAuthContext } from "@/lib/auth";
 
 const VALID_STATUSES: MatterStatus[] = [
   "intake", "assessment", "review", "vendor_evaluation", "oversight", "clearance", "closed",
@@ -10,10 +16,15 @@ export async function GET(
   _req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { userId } = await auth();
-  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const context = await getAuthContext();
+  if (!context) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const { role } = context;
 
   const { id } = await params;
+  const access = await getPortalAccessSummary(context);
+  if (!(await authorizeCapability(context, access, "engagements.view", { matterId: id }))) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
   await ensureVaultTables();
   const sql = getDb();
 
@@ -33,46 +44,72 @@ export async function GET(
   `;
   if (!matter) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  const user = await currentUser();
-  const role = user?.publicMetadata?.role as string | undefined;
-  const isStaff = role === "admin" || role === "advisor";
-
-  // Clients can only see their own matter
-  if (!isStaff) {
-    const [client] = await sql`SELECT clerk_user_id FROM clients WHERE id = ${matter.client_id}`;
-    if (!client || client.clerk_user_id !== userId) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
-  }
-
   // Fetch events
-  const events = await sql`
+  const eventRows = await sql`
     SELECT * FROM matter_events WHERE matter_id = ${id} ORDER BY created_at ASC
   `;
+  const canViewInternalTimeline = hasCapability(access, "timeline.internal_view");
+  const visibleEventRows = eventRows.filter((event) => {
+    const visibility = String(event.visibility ?? "internal") as "internal" | "contractor" | "client";
+    if (visibility === "internal") return canViewInternalTimeline;
+    return canReceiveAudience(role, visibility);
+  });
+  const events = role === "client" || role === "contractor"
+    ? visibleEventRows.map((event) => {
+        const result = { ...event };
+        delete result.user_id;
+        return result;
+      })
+    : visibleEventRows;
 
   // Fetch linked documents
-  const documents = await sql`
-    SELECT id, name, original_name, category, size_bytes, content_type, created_at
+  const documentRows = hasCapability(access, "documents.view")
+    ? await sql`
+    SELECT
+      id,
+      name,
+      original_name,
+      category,
+      size_bytes,
+      content_type,
+      visibility,
+      publication_status,
+      created_at
     FROM documents WHERE matter_id = ${id} ORDER BY created_at DESC
-  `;
+  `
+    : [];
+  const documents = documentRows.filter((document) =>
+    canReceiveAudience(
+      role,
+      String(document.visibility ?? "internal") as "internal" | "contractor" | "client",
+      document.publication_status === "pending_review" ? "pending_review" : "published",
+    ),
+  );
 
-  return NextResponse.json({ matter, events, documents });
+  const canViewClientContact = role === "client" || hasCapability(access, "clients.view");
+  const visibleMatter = {
+    ...matter,
+    notes: canViewInternalTimeline ? matter.notes : null,
+    client_email: canViewClientContact ? matter.client_email : null,
+    client_phone: canViewClientContact ? matter.client_phone : null,
+  };
+
+  return NextResponse.json({ matter: visibleMatter, events, documents });
 }
 
 export async function PATCH(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { userId } = await auth();
-  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-  const user = await currentUser();
-  const role = user?.publicMetadata?.role as string | undefined;
-  if (role !== "admin" && role !== "advisor") {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  const context = await getAuthContext();
+  if (!context) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const { userId } = context;
 
   const { id } = await params;
+  const access = await getPortalAccessSummary(context);
+  if (!(await authorizeCapability(context, access, "engagements.update", { matterId: id }))) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
   const body = await req.json();
   const { status, notes, title } = body;
 
@@ -105,6 +142,7 @@ export async function PATCH(
       eventType: "status_changed",
       content: `Status changed from ${current.status} to ${status}`,
       metadata: { from: current.status, to: status },
+      visibility: "client",
     });
   }
   if (notes !== undefined && notes !== current.notes) {
@@ -113,6 +151,7 @@ export async function PATCH(
       userId,
       eventType: "note_added",
       content: notes,
+      visibility: "internal",
     });
   }
 

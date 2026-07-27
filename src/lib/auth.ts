@@ -1,117 +1,117 @@
-/**
- * Server-side auth helpers for James Roman Advisory.
- *
- * These run in server components and API routes — never in client components.
- * All role checks use currentUser() which fetches from Clerk's backend API
- * and is always authoritative regardless of JWT template configuration.
- *
- * MFA RULE (applies in both middleware and server):
- *   A staff session is considered MFA-verified when fva[1] is not null.
- *   fva = [primaryFactorAge, secondFactorAge] from Clerk session claims.
- *   secondFactorAge is null when no second factor has been verified in this
- *   session — regardless of whether the user has MFA enrolled.
- *
- *   Phone verification alone does NOT satisfy MFA. Staff must complete a
- *   TOTP or hardware key second factor (Clerk authenticator app or passkey).
- *   This matches the middleware check in proxy.ts.
- */
-
-import { auth, currentUser } from "@clerk/nextjs/server";
+import { createHash, randomBytes } from "node:crypto";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
-export type Role = "admin" | "advisor" | "client" | undefined;
+import { ensureAuthTables, getDb } from "@/lib/db";
+import type { UserRole } from "@/lib/data-model";
 
-/** Extract the role from Clerk publicMetadata. */
-export function getRole(
-  user: Awaited<ReturnType<typeof currentUser>>,
-): Role {
-  return (user?.publicMetadata?.role as Role) ?? undefined;
+export type Role = UserRole;
+export type AuthUser = { id: string; name: string; email: string; role: Role };
+export type AuthContext = { userId: string; user: AuthUser; role: Role };
+
+export const SESSION_COOKIE = "jra_session";
+const SESSION_TTL_SECONDS = 60 * 60 * 12;
+
+function hashSessionToken(token: string): string {
+  return createHash("sha256").update(token).digest("hex");
 }
 
-/** True for admin and advisor. */
-export function isStaff(role: Role): boolean {
-  return role === "admin" || role === "advisor";
+function toAuthUser(row: Record<string, unknown>): AuthUser {
+  return {
+    id: String(row.id),
+    name: String(row.name),
+    email: String(row.email),
+    role: row.role as Role,
+  };
 }
 
-/** True for admin only. */
-export function isAdmin(role: Role): boolean {
-  return role === "admin";
+export async function createSession(userId: string): Promise<{ token: string; expiresAt: Date }> {
+  await ensureAuthTables();
+  const token = randomBytes(32).toString("base64url");
+  const expiresAt = new Date(Date.now() + SESSION_TTL_SECONDS * 1000);
+  const sql = getDb();
+  await sql`
+    INSERT INTO auth_sessions (id, user_id, token_hash, expires_at)
+    VALUES (${crypto.randomUUID()}, ${userId}, ${hashSessionToken(token)}, ${expiresAt.toISOString()})
+  `;
+  return { token, expiresAt };
 }
 
-/**
- * Server component guard: redirects to /sign-in if unauthenticated,
- * otherwise returns the userId.
- */
+export function setSessionCookie(response: { cookies: { set: (name: string, value: string, options: Record<string, unknown>) => void } }, token: string, expiresAt: Date) {
+  response.cookies.set(SESSION_COOKIE, token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+    expires: expiresAt,
+  });
+}
+
+export function clearSessionCookie(response: { cookies: { set: (name: string, value: string, options: Record<string, unknown>) => void } }) {
+  response.cookies.set(SESSION_COOKIE, "", {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+    maxAge: 0,
+  });
+}
+
+export async function getAuthContext(): Promise<AuthContext | null> {
+  const token = (await cookies()).get(SESSION_COOKIE)?.value;
+  if (!token) return null;
+
+  await ensureAuthTables();
+  const sql = getDb();
+  const rows = await sql`
+    SELECT u.id, u.name, u.email, u.role
+    FROM auth_sessions s
+    JOIN users u ON u.id = s.user_id
+    WHERE s.token_hash = ${hashSessionToken(token)}
+      AND s.expires_at > NOW()
+      AND u.status = 'active'
+    LIMIT 1
+  `;
+  if (rows.length === 0) return null;
+  const user = toAuthUser(rows[0] as Record<string, unknown>);
+  return { userId: user.id, user, role: user.role };
+}
+
+export async function revokeCurrentSession(): Promise<void> {
+  const token = (await cookies()).get(SESSION_COOKIE)?.value;
+  if (!token) return;
+  await ensureAuthTables();
+  const sql = getDb();
+  await sql`DELETE FROM auth_sessions WHERE token_hash = ${hashSessionToken(token)}`;
+}
+
+export function isSuperAdmin(role?: Role): boolean {
+  return role === "super_admin";
+}
+
 export async function requireAuth(): Promise<string> {
-  const { userId } = await auth();
-  if (!userId) redirect("/sign-in");
-  return userId;
+  const context = await getAuthContext();
+  if (!context) redirect("/sign-in");
+  return context.userId;
 }
 
-/**
- * Server component guard: redirects non-staff to /portal.
- * Returns { userId, user, role } for use in the page.
- */
-export async function requireStaff() {
-  const [{ userId }, user] = await Promise.all([auth(), currentUser()]);
-  if (!userId) redirect("/sign-in");
-
-  const role = getRole(user);
-  if (!isStaff(role)) redirect("/portal");
-
-  return { userId, user: user!, role };
+export async function requireAuthContext(): Promise<AuthContext> {
+  const context = await getAuthContext();
+  if (!context) redirect("/sign-in");
+  return context;
 }
 
-/**
- * Server component guard: redirects non-admins to /portal.
- * Returns { userId, user, role } for use in the page.
- */
-export async function requireAdmin() {
-  const [{ userId }, user] = await Promise.all([auth(), currentUser()]);
-  if (!userId) redirect("/sign-in");
-
-  const role = getRole(user);
-  if (!isAdmin(role)) redirect("/portal");
-
-  return { userId, user: user!, role };
+export async function requireSuperAdmin(): Promise<AuthContext> {
+  const context = await getAuthContext();
+  if (!context) redirect("/sign-in");
+  if (!isSuperAdmin(context.role)) redirect("/portal");
+  return context;
 }
 
-/**
- * Server component guard: verifies the current session has completed a second
- * factor (MFA) — not just that the user has MFA enrolled.
- *
- * Uses fva (factor verification ages) from session claims, which is the same
- * criterion as the middleware in proxy.ts. fva[1] is null when the second
- * factor has not been verified in this session.
- *
- * Call this at the top of staff-facing pages that handle sensitive data, in
- * addition to requireStaff(). Both checks are needed: requireStaff() enforces
- * role, requireMFA() enforces that this particular session is second-factor
- * verified.
- */
-export async function requireMFA(): Promise<string> {
-  const { userId, sessionClaims } = await auth();
-  if (!userId) redirect("/sign-in");
-
-  const fva = (sessionClaims as Record<string, unknown>)?.fva as
-    | [number | null, number | null]
-    | undefined;
-
-  // fva absent → MFA not configured for this user's Clerk instance, or no
-  // second factor enrolled. Either way, redirect to setup prompt.
-  // fva[1] === null → second factor not yet verified in this session.
-  if (!fva || fva[1] === null) {
-    redirect("/mfa-required");
-  }
-
-  return userId;
-}
-
-/**
- * Returns the authenticated userId from an API route context.
- * Returns null if unauthenticated (caller handles the 401).
- */
 export async function getAuthUserId(): Promise<string | null> {
-  const { userId } = await auth();
-  return userId ?? null;
+  return (await getAuthContext())?.userId ?? null;
+}
+
+export function getSessionTtlSeconds(): number {
+  return SESSION_TTL_SECONDS;
 }

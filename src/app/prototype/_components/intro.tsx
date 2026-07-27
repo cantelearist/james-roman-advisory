@@ -19,9 +19,11 @@ export function IntroSequence({ onComplete }: { onComplete: () => void }) {
     // Skip intro if already seen this session
     try {
       if (sessionStorage.getItem(SESSION_KEY)) {
-        setPhase(4);
-        onComplete();
-        return;
+        const alreadySeenTimer = setTimeout(() => {
+          setPhase(4);
+          onComplete();
+        }, 0);
+        return () => clearTimeout(alreadySeenTimer);
       }
     } catch {
       // sessionStorage unavailable (private browsing edge case) — proceed normally

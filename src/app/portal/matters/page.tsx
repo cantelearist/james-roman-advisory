@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { ArrowRight, Plus, X, ChevronRight, FileText, Shield } from "lucide-react";
+import { usePortalAccess } from "@/components/portal/access-provider";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type MatterStatus =
@@ -121,14 +122,19 @@ const DEFAULT_MODAL: ModalState = {
 
 function NewEngagementModal({
   clients,
+  canCreateClient,
   onClose,
   onCreated,
 }: {
   clients: Client[];
+  canCreateClient: boolean;
   onClose: () => void;
   onCreated: () => void;
 }) {
-  const [state, setState] = useState<ModalState>(DEFAULT_MODAL);
+  const [state, setState] = useState<ModalState>({
+    ...DEFAULT_MODAL,
+    clientMode: canCreateClient ? "new" : "existing",
+  });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -235,7 +241,9 @@ function NewEngagementModal({
             {state.step === 3 && "Engagement"}
           </h2>
           <p className="text-[0.8rem] mt-1" style={{ color: TITAN, opacity: 0.7 }}>
-            {state.step === 1 && "Select an existing client or create a new one."}
+            {state.step === 1 && (canCreateClient
+              ? "Select an existing client or create a new one."
+              : "Select a client within your assigned portfolio.")}
             {state.step === 2 && "Add a property address, or skip if not applicable."}
             {state.step === 3 && "Define the matter type and initial scope."}
           </p>
@@ -245,7 +253,9 @@ function NewEngagementModal({
         {state.step === 1 && (
           <div className="space-y-5">
             <div className="flex gap-3">
-              {(["new", "existing"] as const).map((mode) => (
+              {(["new", "existing"] as const)
+                .filter((mode) => canCreateClient || mode === "existing")
+                .map((mode) => (
                 <button key={mode} onClick={() => set({ clientMode: mode })}
                   className="flex-1 py-2 text-[0.72rem] uppercase tracking-[0.18em] border transition-all"
                   style={{
@@ -406,6 +416,12 @@ function StatusEditor({
 
 // ─── Main dashboard ───────────────────────────────────────────────────────────
 export default function MattersPage() {
+  const { access, can } = usePortalAccess();
+  const canCreateEngagement = can("engagements.create");
+  const canUpdateEngagement = can("engagements.update");
+  const canCreateClient =
+    can("clients.manage")
+    && (access.role === "super_admin" || access.scope === "global");
   const [matters, setMatters] = useState<Matter[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
@@ -422,7 +438,10 @@ export default function MattersPage() {
     setLoading(false);
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => { void load(); }, 0);
+    return () => window.clearTimeout(timer);
+  }, [load]);
 
   function handleStatusUpdate(id: string, status: MatterStatus) {
     setMatters((prev) => prev.map((m) => m.id === id ? { ...m, status } : m));
@@ -458,18 +477,22 @@ export default function MattersPage() {
           </span>
         </div>
         <div className="flex items-center gap-3">
-          <Link href="/portal/admin"
-            className="flex items-center gap-1.5 text-[0.68rem] uppercase tracking-[0.16em] opacity-40 hover:opacity-75 transition-opacity"
-            style={{ color: TITAN }}>
-            <Shield size={11} />
-            Admin
-          </Link>
-          <button onClick={() => setShowModal(true)}
-            className="flex items-center gap-2 border px-4 py-2 text-[0.76rem] uppercase tracking-[0.2em] hover:opacity-100 transition-opacity"
-            style={{ borderColor: "rgba(201,181,138,0.25)", color: GOLD, opacity: 0.85 }}>
-            <Plus size={13} />
-            New engagement
-          </button>
+          {(can("users.invite") || can("access.manage")) && (
+            <Link href="/portal/admin"
+              className="flex items-center gap-1.5 text-[0.68rem] uppercase tracking-[0.16em] opacity-40 hover:opacity-75 transition-opacity"
+              style={{ color: TITAN }}>
+              <Shield size={11} />
+              Admin
+            </Link>
+          )}
+          {canCreateEngagement && (
+            <button onClick={() => setShowModal(true)}
+              className="flex items-center gap-2 border px-4 py-2 text-[0.76rem] uppercase tracking-[0.2em] hover:opacity-100 transition-opacity"
+              style={{ borderColor: "rgba(201,181,138,0.25)", color: GOLD, opacity: 0.85 }}>
+              <Plus size={13} />
+              New engagement
+            </button>
+          )}
         </div>
       </header>
 
@@ -525,11 +548,13 @@ export default function MattersPage() {
               style={{ color: TITAN, opacity: 0.4 }}>
               No engagements
             </p>
-            <button onClick={() => setShowModal(true)}
-              className="text-[0.76rem] uppercase tracking-[0.2em] hover:opacity-100 transition-opacity"
-              style={{ color: GOLD, opacity: 0.6 }}>
-              Create the first one →
-            </button>
+            {canCreateEngagement && (
+              <button onClick={() => setShowModal(true)}
+                className="text-[0.76rem] uppercase tracking-[0.2em] hover:opacity-100 transition-opacity"
+                style={{ color: GOLD, opacity: 0.6 }}>
+                Create the first one →
+              </button>
+            )}
           </div>
         ) : (
           <div className="border overflow-hidden" style={{ borderColor: "rgba(201,181,138,0.1)" }}>
@@ -581,7 +606,9 @@ export default function MattersPage() {
 
                 {/* Status */}
                 <div>
-                  <StatusEditor matter={matter} onUpdated={handleStatusUpdate} />
+                  {canUpdateEngagement
+                    ? <StatusEditor matter={matter} onUpdated={handleStatusUpdate} />
+                    : <StatusPill status={matter.status} />}
                 </div>
 
                 {/* Date */}
@@ -611,9 +638,10 @@ export default function MattersPage() {
       </div>
 
       {/* ── Modal ────────────────────────────────────────────────────────────── */}
-      {showModal && (
+      {showModal && canCreateEngagement && (
         <NewEngagementModal
           clients={clients}
+          canCreateClient={canCreateClient}
           onClose={() => setShowModal(false)}
           onCreated={() => {
             setShowModal(false);

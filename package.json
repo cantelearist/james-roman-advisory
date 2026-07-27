@@ -4,17 +4,17 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test .qa/mobile-menu.spec.ts --reporter=line",
+    "test:e2e": "playwright test .qa --project=chromium --reporter=line",
+    "test:e2e:all": "playwright test .qa --reporter=line",
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@base-ui/react": "^1.5.0",
-    "@clerk/nextjs": "^7.4.2",
     "@gsap/react": "^2.1.2",
     "@neondatabase/serverless": "^1.1.0",
     "@upstash/ratelimit": "^2.0.8",
@@ -27,6 +27,7 @@
     "lucide-react": "^1.16.0",
     "motion": "^12.40.0",
     "next": "16.2.6",
+    "pdf-lib": "^1.17.1",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "resend": "^6.12.4",

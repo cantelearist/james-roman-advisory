@@ -1,5 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+const sql = vi.fn();
+const sendConsultationNotification = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/db", () => ({
+  ensureConsultationsTable: vi.fn().mockResolvedValue(undefined),
+  getDb: vi.fn(() => sql),
+}));
+vi.mock("@/lib/email", () => ({ sendConsultationNotification }));
+
 import { POST } from "./route";
 
 const validBody = {
@@ -21,6 +29,8 @@ function requestFor(body: unknown) {
 describe("POST /api/consultations", () => {
   afterEach(() => {
     vi.restoreAllMocks();
+    sendConsultationNotification.mockReset();
+    sendConsultationNotification.mockResolvedValue(undefined);
   });
 
   it("accepts valid consultation requests and returns a private reference", async () => {
@@ -43,6 +53,33 @@ describe("POST /api/consultations", () => {
         }),
       }),
     );
+    expect(sendConsultationNotification).toHaveBeenCalledWith(
+      expect.objectContaining({
+        referenceId: json.referenceId,
+        email: validBody.email,
+      }),
+    );
+  });
+
+  it("waits for notification delivery before completing the response", async () => {
+    let resolveDelivery!: () => void;
+    let responseSettled = false;
+    sendConsultationNotification.mockImplementation(
+      () => new Promise<void>((resolve) => { resolveDelivery = resolve; }),
+    );
+    vi.spyOn(console, "info").mockImplementation(() => {});
+    vi.spyOn(crypto, "randomUUID").mockReturnValue("12345678-1234-4234-9234-123456789abc");
+
+    const responsePromise = POST(requestFor(validBody));
+    void responsePromise.then(() => { responseSettled = true; });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(sendConsultationNotification).toHaveBeenCalled();
+    expect(responseSettled).toBe(false);
+
+    resolveDelivery();
+    const response = await responsePromise;
+    expect(response.status).toBe(202);
   });
 
   it("returns field errors for invalid requests", async () => {

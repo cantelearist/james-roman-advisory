@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { ensureUsersTable, getDb } from "@/lib/db";
 import type { UserRole } from "@/lib/data-model";
 import { ratelimit, getClientIp } from "@/lib/ratelimit";
+import { hashPassword } from "@/lib/password";
 
 // SECURITY: No fallback. If SEED_KEY is not set, the route is permanently locked.
 // Never add a default value here — this endpoint must fail loudly in any environment
@@ -17,8 +18,8 @@ type SeedUser = {
 
 const SEED_USERS: SeedUser[] = [
   { id: "usr_admin_01",    name: "System Admin", email: "admin@jamesroman.la",   role: "admin"   },
-  { id: "usr_adv_stephen", name: "Stephen",      email: "stephen@jamesroman.la", role: "advisor" },
-  { id: "usr_adv_roman",   name: "Roman",        email: "roman@jamesroman.la",   role: "advisor" },
+  { id: "usr_adv_stephen", name: "Stephen",      email: "stephen@jamesroman.la", role: "admin" },
+  { id: "usr_adv_roman",   name: "Roman",        email: "roman@jamesroman.la",   role: "super_admin" },
   { id: "usr_client_demo", name: "Demo Client",  email: "demo@client.test",      role: "client"  },
 ];
 
@@ -47,16 +48,18 @@ export async function POST(req: NextRequest) {
   try {
     await ensureUsersTable();
     const sql = getDb();
+    const seedPassword = process.env.SEED_PASSWORD ? await hashPassword(process.env.SEED_PASSWORD) : null;
 
     const users = await Promise.all(
       SEED_USERS.map((u) =>
         sql`
-          INSERT INTO users (id, name, email, role)
-          VALUES (${u.id}, ${u.name}, ${u.email}, ${u.role})
+          INSERT INTO users (id, name, email, role, password_hash)
+          VALUES (${u.id}, ${u.name}, ${u.email}, ${u.role}, ${seedPassword})
           ON CONFLICT (id) DO UPDATE
             SET name  = EXCLUDED.name,
                 email = EXCLUDED.email,
-                role  = EXCLUDED.role
+                role  = EXCLUDED.role,
+                password_hash = COALESCE(EXCLUDED.password_hash, users.password_hash)
           RETURNING id, name, email, role, created_at
         `.then((rows) => rows[0])
       )

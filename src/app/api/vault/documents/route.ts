@@ -3,56 +3,107 @@
  * Returns the authenticated client's documents, optionally filtered by matter_id.
  * Query params: ?matter_id=<uuid>  (optional)
  *
- * Auth: Clerk session required.
+ * Auth: first-party session required.
  */
-import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 
-import { ensureVaultTables, getDb, logFileAccess } from "@/lib/db";
+import {
+  authorizeCapability,
+  canReceiveAudience,
+  getPortalAccessSummary,
+  hasCapability,
+  logAccessAudit,
+} from "@/lib/access-control";
+import { ensureVaultTables, getDb } from "@/lib/db";
+import { getAuthContext } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
 export async function GET(request: Request) {
   try {
-    const { userId } = await auth();
-    if (!userId) {
+    const context = await getAuthContext();
+    if (!context) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const { userId, role } = context;
+    const access = await getPortalAccessSummary(context);
+    if (!hasCapability(access, "documents.view")) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     await ensureVaultTables();
     const sql = getDb();
 
-    // Resolve client id for this user
-    const clientRows = await sql`
-      SELECT id FROM clients WHERE clerk_user_id = ${userId}
-    `;
-    if (clientRows.length === 0) {
-      return NextResponse.json({ documents: [] });
-    }
-    const clientId = clientRows[0].id as string;
-
     const url = new URL(request.url);
     const matterId = url.searchParams.get("matter_id");
+    if (
+      matterId
+      && !(await authorizeCapability(context, access, "documents.view", { matterId }))
+    ) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
 
-    const documents = matterId
+    const rows = role === "super_admin" || (role === "admin" && access.scope === "global")
       ? await sql`
-          SELECT id, name, original_name, category, size_bytes, content_type, matter_id, created_at
+          SELECT
+            id,
+            name,
+            original_name,
+            category,
+            size_bytes,
+            content_type,
+            matter_id,
+            visibility,
+            publication_status,
+            created_at
           FROM documents
-          WHERE client_id = ${clientId} AND matter_id = ${matterId}
+          WHERE (${matterId}::TEXT IS NULL OR matter_id = ${matterId})
           ORDER BY created_at DESC
         `
       : await sql`
-          SELECT id, name, original_name, category, size_bytes, content_type, matter_id, created_at
-          FROM documents
-          WHERE client_id = ${clientId}
-          ORDER BY created_at DESC
+          SELECT DISTINCT
+            d.id,
+            d.name,
+            d.original_name,
+            d.category,
+            d.size_bytes,
+            d.content_type,
+            d.matter_id,
+            d.visibility,
+            d.publication_status,
+            d.created_at
+          FROM documents d
+          LEFT JOIN engagement_memberships em
+            ON em.matter_id = d.matter_id
+            AND em.user_id = ${userId}
+            AND em.status = 'active'
+            AND (em.expires_at IS NULL OR em.expires_at > NOW())
+          WHERE
+            (em.id IS NOT NULL OR d.uploaded_by = ${userId})
+            AND (${matterId}::TEXT IS NULL OR d.matter_id = ${matterId})
+          ORDER BY d.created_at DESC
         `;
+    const visibleRows = rows.filter((document) =>
+        canReceiveAudience(
+          role,
+          String(document.visibility ?? "internal") as "internal" | "contractor" | "client",
+          document.publication_status === "pending_review" ? "pending_review" : "published",
+        ),
+      );
+    const documents = hasCapability(access, "documents.publish")
+      ? visibleRows
+      : visibleRows.map((document) => {
+          const result = { ...document };
+          delete result.visibility;
+          delete result.publication_status;
+          return result;
+        });
 
-    // Log view event for the listing (lightweight — no per-doc events here)
-    void logFileAccess({
-      documentId: "list",
-      userId,
-      eventType: "view",
+    await logAccessAudit({
+      actorId: userId,
+      action: "documents.list_viewed",
+      matterId: matterId ?? undefined,
+      metadata: { count: documents.length },
     });
 
     return NextResponse.json({ documents });

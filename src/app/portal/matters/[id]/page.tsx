@@ -8,6 +8,7 @@ import {
   MapPin, StickyNote, CheckCircle2, AlertCircle,
   Send, Loader2, Download, GitBranch, Activity, X,
 } from "lucide-react";
+import { usePortalAccess } from "@/components/portal/access-provider";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type MatterStatus =
@@ -439,9 +440,11 @@ function AdvanceModal({
 function WorkflowPanel({
   matter,
   onAdvance,
+  canManage,
 }: {
   matter: Matter;
   onAdvance: (status: MatterStatus) => Promise<void>;
+  canManage: boolean;
 }) {
   const currentIdx = STATUS_ORDER.indexOf(matter.status);
   const nextStatus = currentIdx < STATUS_ORDER.length - 1 ? STATUS_ORDER[currentIdx + 1] : null;
@@ -533,7 +536,7 @@ function WorkflowPanel({
         </div>
 
         {/* Advance / Retreat controls — only for non-closed matters */}
-        {isOpen && (
+        {isOpen && canManage && (
           <div className="border p-5 space-y-3" style={{ borderColor: "rgba(201,181,138,0.1)", background: CARD }}>
             <p className="text-[0.62rem] uppercase tracking-[0.26em] mb-4" style={{ color: TITAN, opacity: 0.45 }}>
               Stage controls
@@ -629,7 +632,7 @@ function WorkflowPanel({
         </div>
       </div>
 
-      {showAdvanceModal && nextStatus && (
+      {showAdvanceModal && nextStatus && canManage && (
         <AdvanceModal
           from={matter.status}
           to={nextStatus}
@@ -648,6 +651,9 @@ type Tab = "timeline" | "workflow";
 export default function MatterDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
+  const { can } = usePortalAccess();
+  const canUpdateEngagement = can("engagements.update");
+  const canManageTimeline = can("timeline.manage");
 
   const [matter, setMatter]         = useState<Matter | null>(null);
   const [events, setEvents]         = useState<MatterEvent[]>([]);
@@ -670,7 +676,10 @@ export default function MatterDetailPage() {
     setLoading(false);
   }, [id, router]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => { void load(); }, 0);
+    return () => window.clearTimeout(timer);
+  }, [load]);
 
   useEffect(() => {
     if (activeTab === "timeline") {
@@ -680,11 +689,12 @@ export default function MatterDetailPage() {
 
   async function handleStatusChange(status: MatterStatus) {
     if (!matter) return;
-    await fetch(`/api/matters/${matter.id}`, {
+    const response = await fetch(`/api/matters/${matter.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status }),
     });
+    if (!response.ok) return;
     setMatter((m) => m ? { ...m, status } : m);
     await load();
   }
@@ -737,7 +747,21 @@ export default function MatterDetailPage() {
             {matter.title}
           </span>
         </div>
-        <StatusSelector current={matter.status} onChange={handleStatusChange} />
+        {canUpdateEngagement ? (
+          <StatusSelector current={matter.status} onChange={handleStatusChange} />
+        ) : (
+          <div
+            className="flex items-center gap-2 border px-3 py-1.5 text-[0.72rem] uppercase tracking-[0.18em]"
+            style={{
+              borderColor: STATUS_CONFIG[matter.status].ring,
+              background: STATUS_CONFIG[matter.status].ring,
+              color: STATUS_CONFIG[matter.status].dot,
+            }}
+          >
+            <span className="size-1.5 rounded-full" style={{ background: STATUS_CONFIG[matter.status].dot }} />
+            {STATUS_CONFIG[matter.status].label}
+          </div>
+        )}
       </header>
 
       <div className="max-w-6xl mx-auto px-6 py-10 grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-10">
@@ -801,7 +825,8 @@ export default function MatterDetailPage() {
               )}
 
               {/* Add note */}
-              <div className="border" style={{ borderColor: "rgba(201,181,138,0.12)", background: CARD }}>
+              {canManageTimeline && (
+                <div className="border" style={{ borderColor: "rgba(201,181,138,0.12)", background: CARD }}>
                 <form onSubmit={submitNote}>
                   <textarea
                     value={noteText}
@@ -830,13 +855,18 @@ export default function MatterDetailPage() {
                     </button>
                   </div>
                 </form>
-              </div>
+                </div>
+              )}
             </div>
           )}
 
           {/* Tab: Workflow */}
           {activeTab === "workflow" && (
-            <WorkflowPanel matter={matter} onAdvance={handleStatusChange} />
+            <WorkflowPanel
+              matter={matter}
+              onAdvance={handleStatusChange}
+              canManage={canUpdateEngagement}
+            />
           )}
         </div>
 
@@ -918,8 +948,15 @@ export default function MatterDetailPage() {
                     </div>
                     <button
                       onClick={async () => {
-                        const res = await fetch(`/api/vault/download/${doc.id}`);
-                        if (res.ok) { const { url } = await res.json(); window.open(url, "_blank"); }
+                        const res = await fetch(`/api/vault/documents/${doc.id}`);
+                        if (!res.ok) return;
+                        const blob = await res.blob();
+                        const url = URL.createObjectURL(blob);
+                        const anchor = document.createElement("a");
+                        anchor.href = url;
+                        anchor.download = doc.original_name;
+                        anchor.click();
+                        URL.revokeObjectURL(url);
                       }}
                       className="opacity-35 hover:opacity-80 transition-opacity flex-shrink-0 mt-0.5">
                       <Download size={12} style={{ color: CREAM }} />

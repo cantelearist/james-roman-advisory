@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -10,8 +10,10 @@ import {
   Shield,
   Trash2,
   UserPlus,
+  Users,
   X,
 } from "lucide-react";
+import { usePortalAccess } from "@/components/portal/access-provider";
 
 const GOLD = "#c9b58a";
 const CREAM = "#ece6d6";
@@ -19,34 +21,53 @@ const TITAN = "#b2a898";
 const BG = "#0a0b0e";
 const CARD = "#0d0f14";
 
-type Role = "admin" | "advisor" | "client";
+type Role = "admin" | "contractor" | "client";
 type Invitation = {
   id: string;
   email: string;
   role: Role;
-  createdAt: number;
+  createdAt: string;
+};
+
+type PermissionProfile = {
+  id: string;
+  name: string;
+  roleType: "admin" | "contractor";
+};
+
+type EngagementOption = {
+  id: string;
+  title: string;
+  clientName: string;
 };
 
 const ROLE_LABELS: Record<Role, string> = {
   admin: "Admin",
-  advisor: "Advisor",
+  contractor: "Contractor",
   client: "Client",
 };
 
 const ROLE_COLORS: Record<Role, string> = {
   admin: "rgba(239,68,68,0.65)",
-  advisor: "rgba(201,181,138,0.75)",
+  contractor: "rgba(201,181,138,0.75)",
   client: "rgba(178,168,152,0.5)",
 };
 
 export default function AdminPage() {
+  const { access } = usePortalAccess();
+  const isSuperAdmin = access.role === "super_admin";
   const [invitations, setInvitations] = useState<Invitation[]>([]);
+  const [profiles, setProfiles] = useState<PermissionProfile[]>([]);
+  const [engagements, setEngagements] = useState<EngagementOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   // Invite form state
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<Role>("client");
+  const [permissionProfileId, setPermissionProfileId] = useState("");
+  const [accessScope, setAccessScope] = useState<"global" | "assigned">("assigned");
+  const [matterId, setMatterId] = useState("");
   const [sending, setSending] = useState(false);
   const [sendResult, setSendResult] = useState<{
     ok: boolean;
@@ -76,9 +97,37 @@ export default function AdminPage() {
     }
   }
 
+  const loadAccessOptions = useCallback(async () => {
+    const matterResponse = await fetch("/api/matters");
+    if (matterResponse.ok) {
+      const matterData = await matterResponse.json();
+      setEngagements(
+        (matterData.matters ?? []).map((matter: {
+          id: string;
+          title: string;
+          client_name?: string;
+        }) => ({
+          id: matter.id,
+          title: matter.title,
+          clientName: matter.client_name ?? "Client",
+        })),
+      );
+    }
+    if (isSuperAdmin) {
+      const response = await fetch("/api/admin/access");
+      if (!response.ok) return;
+      const data = await response.json();
+      setProfiles(data.profiles ?? []);
+    }
+  }, [isSuperAdmin]);
+
   useEffect(() => {
-    loadInvitations();
-  }, []);
+    const timer = window.setTimeout(() => {
+      void loadInvitations();
+      void loadAccessOptions();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [loadAccessOptions]);
 
   async function handleSendInvite(e: React.FormEvent) {
     e.preventDefault();
@@ -90,7 +139,16 @@ export default function AdminPage() {
       const res = await fetch("/api/admin/invite", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim(), role }),
+        body: JSON.stringify({
+          email: email.trim(),
+          role,
+          permissionProfileId:
+            role === "admin" || role === "contractor"
+              ? permissionProfileId || undefined
+              : undefined,
+          accessScope: role === "admin" ? accessScope : "assigned",
+          matterId: matterId || undefined,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed to send invitation");
@@ -98,6 +156,9 @@ export default function AdminPage() {
       setSendResult({ ok: true, message: `Invitation sent to ${data.email}` });
       setEmail("");
       setRole("client");
+      setPermissionProfileId("");
+      setAccessScope("assigned");
+      setMatterId("");
       await loadInvitations();
     } catch (e) {
       setSendResult({
@@ -187,7 +248,7 @@ export default function AdminPage() {
               }}
             >
               <ArrowLeft size={13} />
-              Matters
+              Engagements
             </Link>
             <div
               style={{
@@ -211,6 +272,27 @@ export default function AdminPage() {
             </div>
           </div>
 
+          <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+          {isSuperAdmin && (
+            <Link
+              href="/portal/admin/access"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "0.375rem",
+                border: "1px solid rgba(201,181,138,0.25)",
+                color: GOLD,
+                padding: "0.375rem 0.875rem",
+                fontSize: "0.65rem",
+                letterSpacing: "0.14em",
+                textTransform: "uppercase",
+                textDecoration: "none",
+              }}
+            >
+              <Users size={11} />
+              Users & access
+            </Link>
+          )}
           <button
             onClick={loadInvitations}
             disabled={loading}
@@ -237,6 +319,7 @@ export default function AdminPage() {
             />
             Refresh
           </button>
+          </div>
         </div>
       </header>
 
@@ -312,7 +395,9 @@ export default function AdminPage() {
                 Role
               </label>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "0.5rem" }}>
-                {(["client", "advisor", "admin"] as Role[]).map((r) => (
+                {(["client", "contractor", "admin"] as Role[])
+                  .filter((candidate) => isSuperAdmin || candidate === "client")
+                  .map((r) => (
                   <button
                     key={r}
                     type="button"
@@ -346,11 +431,81 @@ export default function AdminPage() {
                     lineHeight: 1.4,
                   }}
                 >
-                  Admin accounts have full access to the console, all matters,
-                  and the invitation system.
+                  Admin authority is defined by the selected permission profile
+                  and access scope.
                 </p>
               )}
             </div>
+
+            {(role === "client" || role === "contractor" || accessScope === "assigned") && (
+              <div>
+                <label style={labelStyle} htmlFor="invite-engagement">
+                  Engagement
+                </label>
+                <select
+                  id="invite-engagement"
+                  required
+                  value={matterId}
+                  onChange={(event) => setMatterId(event.target.value)}
+                  style={inputStyle}
+                  disabled={sending}
+                >
+                  <option value="">Select an engagement</option>
+                  {engagements.map((engagement) => (
+                    <option key={engagement.id} value={engagement.id}>
+                      {engagement.clientName} — {engagement.title}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {isSuperAdmin && (role === "admin" || role === "contractor") && (
+              <>
+                <div>
+                  <label style={labelStyle} htmlFor="invite-profile">
+                    Permission profile
+                  </label>
+                  <select
+                    id="invite-profile"
+                    value={permissionProfileId}
+                    onChange={(event) => setPermissionProfileId(event.target.value)}
+                    style={inputStyle}
+                    disabled={sending}
+                  >
+                    <option value="">Use standard profile</option>
+                    {profiles
+                      .filter((profile) => profile.roleType === role)
+                      .map((profile) => (
+                        <option key={profile.id} value={profile.id}>
+                          {profile.name}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+                {role === "admin" && (
+                  <div>
+                    <label style={labelStyle} htmlFor="invite-scope">
+                      Access scope
+                    </label>
+                    <select
+                      id="invite-scope"
+                      value={accessScope}
+                      onChange={(event) => {
+                        const scope = event.target.value === "global" ? "global" : "assigned";
+                        setAccessScope(scope);
+                        if (scope === "global") setMatterId("");
+                      }}
+                      style={inputStyle}
+                      disabled={sending}
+                    >
+                      <option value="assigned">Assigned engagements only</option>
+                      <option value="global">All engagements</option>
+                    </select>
+                  </div>
+                )}
+              </>
+            )}
 
             {/* Result message */}
             {sendResult && (

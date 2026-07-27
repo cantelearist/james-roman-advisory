@@ -2,7 +2,7 @@ import { Resend } from "resend";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const FROM = "James Roman Advisory <notifications@jamesroman.la>";
+const FROM = "James Roman Advisory <roman@jamesroman.la>";
 
 // ─── Templates ────────────────────────────────────────────────────────────────
 
@@ -159,7 +159,7 @@ export async function sendConsultationNotification(
   // Lazy-init so missing key never throws at module load time
   const resend = new Resend(process.env.RESEND_API_KEY);
   const notificationEmail =
-    process.env.NOTIFICATION_EMAIL ?? "advisory@jamesroman.la";
+    process.env.NOTIFICATION_EMAIL ?? "roman@jamesroman.la";
 
   const receivedAt = new Date().toLocaleString("en-US", {
     timeZone: "America/Los_Angeles",
@@ -167,20 +167,26 @@ export async function sendConsultationNotification(
     timeStyle: "short",
   });
 
-  const { error } = await resend.emails.send({
-    from: FROM,
-    to: [notificationEmail],
-    subject: `New consultation request — ${data.referenceId}`,
-    html: consultationNotificationHtml({ ...data, receivedAt }),
-  });
-
-  if (error) {
-    // Log but don't throw — email failure must not break the submission
-    console.error("email.failed", { referenceId: data.referenceId, error });
-  } else {
-    console.info("email.sent", {
-      referenceId: data.referenceId,
-      to: notificationEmail,
+  try {
+    const { error } = await resend.emails.send({
+      from: FROM,
+      to: [notificationEmail],
+      subject: `New consultation request — ${data.referenceId}`,
+      html: consultationNotificationHtml({ ...data, receivedAt }),
     });
+
+    if (error) {
+      // Log but don't throw — email failure must not break the submission
+      console.error("email.failed", { referenceId: data.referenceId, error });
+    } else {
+      console.info("email.sent", {
+        referenceId: data.referenceId,
+        to: notificationEmail,
+      });
+    }
+  } catch (error) {
+    // Network/provider exceptions must also be contained so the consultation
+    // record remains successful even when notification delivery is unavailable.
+    console.error("email.failed", { referenceId: data.referenceId, error });
   }
 }

@@ -1,20 +1,24 @@
-import { auth, currentUser } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { getDb, ensureVaultTables, logMatterEvent } from "@/lib/db";
+import {
+  authorizeCapability,
+  getPortalAccessSummary,
+} from "@/lib/access-control";
+import { getAuthContext } from "@/lib/auth";
 
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { userId } = await auth();
-  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-  const user = await currentUser();
-  const role = user?.publicMetadata?.role as string | undefined;
-  const isStaff = role === "admin" || role === "advisor";
-  if (!isStaff) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const context = await getAuthContext();
+  if (!context) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const { userId } = context;
 
   const { id } = await params;
+  const access = await getPortalAccessSummary(context);
+  if (!(await authorizeCapability(context, access, "timeline.manage", { matterId: id }))) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
   const body = await req.json();
   const { content } = body;
 
@@ -33,6 +37,7 @@ export async function POST(
     userId,
     eventType: "note_added",
     content: content.trim(),
+    visibility: "internal",
   });
 
   const [event] = await sql`

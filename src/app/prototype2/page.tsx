@@ -8,7 +8,6 @@ import {
   useScroll,
   useTransform,
   useInView,
-  useMotionValue,
   useSpring,
   useReducedMotion,
   AnimatePresence,
@@ -26,6 +25,15 @@ const GOLD   = "#c9b58a";   // warm gold — accents, CTAs, key highlights
 const CREAM  = "#ece6d6";   // primary text
 const BG     = "#0a0b0e";
 const EASE   = [0.16, 1, 0.3, 1] as const;
+
+// Deterministic positions keep the decorative night-sky layer stable between
+// renders (and avoid introducing impure work during React render).
+const STARS = Array.from({ length: 18 }, (_, i) => ({
+  size: i % 3 === 0 ? 2 : 1,
+  opacity: 0.15 + ((i * 7) % 25) / 100,
+  left: 5 + ((i * 37) % 90),
+  top: 2 + ((i * 19) % 35),
+}));
 
 // Origin section is the typographic reference:
 // heading: clamp(2.6rem, 4vw, 5rem) | body: 1.08rem | label: 0.8rem
@@ -286,14 +294,23 @@ export default function Prototype() {
   const [mounted, setMounted] = useState(false);
   const [navVisible, setNavVisible] = useState(true);
   const lastScrollY = useRef(0);
+  const navInteractionUntil = useRef(0);
 
-  useEffect(() => setMounted(true), []);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setMounted(true), 0);
+    return () => window.clearTimeout(timer);
+  }, []);
   const handleIntroComplete = useCallback(() => setIntroComplete(true), []);
 
   // Hide nav on scroll down, reveal on scroll up
   useEffect(() => {
     const onScroll = () => {
       const y = window.scrollY;
+      if (Date.now() < navInteractionUntil.current) {
+        setNavVisible(true);
+        lastScrollY.current = y;
+        return;
+      }
       if (y < 80) { setNavVisible(true); }
       else if (y > lastScrollY.current + 8) { setNavVisible(false); }
       else if (y < lastScrollY.current - 8) { setNavVisible(true); }
@@ -337,7 +354,17 @@ export default function Prototype() {
           <nav className="hidden md:flex items-center gap-10 text-[0.86rem] uppercase tracking-[0.2em]"
             style={{ color:TITAN, opacity:0.7 }}>
             {[["The Practice","#the-practice"],["Origin","#origin"],["The Cornerstone","#the-cornerstone"],["Private Office","#private-office"]].map(([l,h]) => (
-              <a key={l} href={h} className="hover:opacity-100 transition-opacity duration-400">{l}</a>
+              <a
+                key={l}
+                href={h}
+                onClick={() => {
+                  navInteractionUntil.current = Date.now() + 5000;
+                  setNavVisible(true);
+                }}
+                className="hover:opacity-100 transition-opacity duration-400"
+              >
+                {l}
+              </a>
             ))}
           </nav>
           <a href="#consultation" data-cursor="inquire"
@@ -545,11 +572,11 @@ export default function Prototype() {
               background:`linear-gradient(180deg, transparent, rgba(20,60,120,0.18) 40%, rgba(15,45,90,0.22) 60%, transparent)`,
             }} />
             {/* Stars/shimmer dots — pure CSS */}
-            {[...Array(18)].map((_,i) => (
+            {STARS.map((star, i) => (
               <div key={i} className="absolute rounded-full" style={{
-                width: i%3===0?2:1, height: i%3===0?2:1,
-                background:`rgba(236,230,214,${0.15+Math.random()*0.25})`,
-                left:`${5+Math.random()*90}%`, top:`${2+Math.random()*35}%`,
+                width: star.size, height: star.size,
+                background:`rgba(236,230,214,${star.opacity})`,
+                left:`${star.left}%`, top:`${star.top}%`,
                 boxShadow:`0 0 ${i%2===0?3:2}px rgba(236,230,214,0.3)`,
               }} />
             ))}

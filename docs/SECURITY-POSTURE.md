@@ -12,7 +12,7 @@ This project is built around client confidentiality first.
 
 ## Planned Controls
 
-- Clerk MFA enforcement for `/portal/*`.
+- First-party password sessions for `/portal/*`.
 - Postgres row-level security for engagement-scoped records.
 - Signed document URLs only; no public storage buckets.
 - Append-only audit log for every document read/write and AI operation.
@@ -22,4 +22,4 @@ This project is built around client confidentiality first.
 
 - California counsel must provide privacy policy, terms, and retention language.
 - Vendor DPAs must be collected before production data is stored.
-- A real database and auth provider must be configured before portal use.
+- A real database, storage token, password-reset flow, and second factor must be configured before broad portal use.

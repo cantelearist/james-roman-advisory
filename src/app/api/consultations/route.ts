@@ -44,8 +44,10 @@ export async function POST(request: Request) {
       receivedAt: new Date().toISOString(),
     });
 
-    // Fire notification email — non-blocking; failure logged but never surfaces to client
-    void sendConsultationNotification({
+    // Await notification delivery so serverless runtimes do not terminate the
+    // request before Resend has accepted the message. Delivery failures are
+    // contained inside sendConsultationNotification and do not fail intake.
+    await sendConsultationNotification({
       referenceId,
       name: input.name,
       email: input.email,

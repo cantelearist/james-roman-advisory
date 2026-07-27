@@ -18,6 +18,7 @@ import {
 
 import { Badge } from "@/components/ui/badge";
 import { BrandLogo } from "@/components/brand-logo";
+import { usePortalAccess } from "@/components/portal/access-provider";
 import { Progress } from "@/components/ui/progress";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -41,7 +42,15 @@ interface VaultDocument {
   size_bytes: number;
   content_type: string;
   matter_id: string | null;
+  visibility?: "internal" | "contractor" | "client";
+  publication_status?: "pending_review" | "published";
   created_at: string;
+}
+
+interface EngagementOption {
+  id: string;
+  title: string;
+  client_name?: string;
 }
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -92,7 +101,10 @@ function formatDate(iso: string): string {
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export default function VaultPage() {
+  const { can } = usePortalAccess();
   const [documents, setDocuments] = useState<VaultDocument[]>([]);
+  const [engagements, setEngagements] = useState<EngagementOption[]>([]);
+  const [selectedMatterId, setSelectedMatterId] = useState("");
   const [loading, setLoading] = useState(true);
   const [filterCategory, setFilterCategory] = useState<DocCategory | "all">("all");
 
@@ -113,10 +125,19 @@ export default function VaultPage() {
   const fetchDocuments = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await fetch("/api/vault/documents");
-      if (!res.ok) throw new Error("Failed to load");
-      const data = await res.json();
-      setDocuments(data.documents ?? []);
+      const [documentResponse, matterResponse] = await Promise.all([
+        fetch("/api/vault/documents"),
+        fetch("/api/matters"),
+      ]);
+      if (!documentResponse.ok) throw new Error("Failed to load");
+      const [documentData, matterData] = await Promise.all([
+        documentResponse.json(),
+        matterResponse.ok ? matterResponse.json() : Promise.resolve({ matters: [] }),
+      ]);
+      setDocuments(documentData.documents ?? []);
+      const matterOptions = matterData.matters ?? [];
+      setEngagements(matterOptions);
+      setSelectedMatterId((current) => current || matterOptions[0]?.id || "");
     } catch {
       // silently handle — no docs shown
     } finally {
@@ -125,7 +146,10 @@ export default function VaultPage() {
   }, []);
 
   useEffect(() => {
-    fetchDocuments();
+    const timer = window.setTimeout(() => {
+      void fetchDocuments();
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [fetchDocuments]);
 
   // ─── Upload ────────────────────────────────────────────────────────────
@@ -141,6 +165,7 @@ export default function VaultPage() {
         const formData = new FormData();
         formData.append("file", file);
         formData.append("category", uploadCategory);
+        if (selectedMatterId) formData.append("matter_id", selectedMatterId);
 
         setUploadProgress(40);
         const res = await fetch("/api/vault/upload", {
@@ -165,7 +190,7 @@ export default function VaultPage() {
         setTimeout(() => setUploadProgress(0), 1200);
       }
     },
-    [uploadCategory, fetchDocuments]
+    [uploadCategory, fetchDocuments, selectedMatterId]
   );
 
   const handleFileChange = useCallback(
@@ -207,6 +232,19 @@ export default function VaultPage() {
       setDownloading(null);
     }
   }, []);
+
+  const updateDocumentAudience = useCallback(async (
+    doc: VaultDocument,
+    visibility: "internal" | "contractor" | "client",
+  ) => {
+    const response = await fetch(`/api/vault/documents/${doc.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ visibility, publicationStatus: "published" }),
+    });
+    if (!response.ok) return;
+    await fetchDocuments();
+  }, [fetchDocuments]);
 
   // ─── Filter ────────────────────────────────────────────────────────────
 
@@ -255,7 +293,7 @@ export default function VaultPage() {
           </h1>
           <p className="mt-2 text-sm text-muted-foreground">
             All uploads are encrypted in transit. Access is logged. Documents are visible only to
-            you and your assigned advisor.
+            authorized participants in the selected engagement.
           </p>
         </div>
 
@@ -306,7 +344,9 @@ export default function VaultPage() {
                 <FileLock2 className="mb-3 size-8 text-primary/30" />
                 <p className="text-sm font-medium text-foreground/60">No documents yet</p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Upload your first file using the panel on the right.
+                  {can("documents.upload")
+                    ? "Upload your first file using the panel on the right."
+                    : "No documents have been published to this workspace."}
                 </p>
               </div>
             ) : (
@@ -327,6 +367,23 @@ export default function VaultPage() {
                           {formatDate(doc.created_at)}
                         </p>
                       </div>
+                      {can("documents.publish") && doc.visibility && (
+                        <select
+                          aria-label={`Audience for ${doc.name}`}
+                          value={doc.visibility}
+                          onChange={(event) =>
+                            updateDocumentAudience(
+                              doc,
+                              event.target.value as "internal" | "contractor" | "client",
+                            )
+                          }
+                          className="shrink-0 border border-primary/15 bg-background px-2 py-1 text-[0.65rem] text-muted-foreground"
+                        >
+                          <option value="internal">Internal</option>
+                          <option value="contractor">Contractor</option>
+                          <option value="client">Client</option>
+                        </select>
+                      )}
                       <button
                         onClick={() => downloadDocument(doc)}
                         disabled={downloading === doc.id}
@@ -343,11 +400,36 @@ export default function VaultPage() {
           </div>
 
           {/* Right — upload panel */}
+          {can("documents.upload") && (
           <div className="space-y-5">
             <div className="rounded-sm border border-primary/15 bg-card p-5">
               <p className="mb-4 text-[0.64rem] uppercase tracking-[0.28em] text-muted-foreground">
                 Upload document
               </p>
+
+              <div className="mb-4">
+                <label
+                  htmlFor="engagement"
+                  className="mb-1.5 block text-xs text-muted-foreground"
+                >
+                  Engagement
+                </label>
+                <select
+                  id="engagement"
+                  value={selectedMatterId}
+                  onChange={(event) => setSelectedMatterId(event.target.value)}
+                  className="w-full rounded-sm border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary/40"
+                >
+                  <option value="">Select an engagement</option>
+                  {engagements.map((engagement) => (
+                    <option key={engagement.id} value={engagement.id}>
+                      {engagement.client_name
+                        ? `${engagement.client_name} — ${engagement.title}`
+                        : engagement.title}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
               {/* Category selector */}
               <div className="mb-4">
@@ -381,7 +463,7 @@ export default function VaultPage() {
                 }}
                 onDragLeave={() => setDragOver(false)}
                 onDrop={handleDrop}
-                disabled={uploading}
+                disabled={uploading || !selectedMatterId}
                 className={`flex w-full flex-col items-center justify-center gap-2 rounded-sm border border-dashed py-10 text-center transition-colors ${
                   dragOver
                     ? "border-primary/60 bg-primary/5"
@@ -403,7 +485,7 @@ export default function VaultPage() {
                 className="hidden"
                 accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.webp,.heic,.txt,.csv"
                 onChange={handleFileChange}
-                disabled={uploading}
+                disabled={uploading || !selectedMatterId}
               />
 
               {/* Upload progress */}
@@ -440,7 +522,7 @@ export default function VaultPage() {
                 </p>
                 <p className="flex items-center gap-1.5">
                   <Shield className="size-3 shrink-0 text-primary/50" />
-                  Visible only to you and your advisor
+                  Visibility follows the engagement access policy
                 </p>
                 <p className="flex items-center gap-1.5">
                   <Shield className="size-3 shrink-0 text-primary/50" />
@@ -449,6 +531,7 @@ export default function VaultPage() {
               </div>
             </div>
           </div>
+          )}
         </div>
       </div>
     </main>

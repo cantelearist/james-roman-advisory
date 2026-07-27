@@ -14,6 +14,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { consultationSchema } from "@/lib/intake";
 import { cn } from "@/lib/utils";
 
 type SubmitState =
@@ -38,29 +39,48 @@ export function ConsultationForm({ variant = "card", className }: ConsultationFo
     const formData = new FormData(form);
     const payload = Object.fromEntries(formData.entries());
 
-    const response = await fetch("/api/consultations", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    const result = (await response.json()) as { message?: string; errors?: Record<string, string[]> };
-
-    if (!response.ok) {
+    const parsed = consultationSchema.safeParse(payload);
+    if (!parsed.success) {
       setState({
         status: "error",
-        message:
-          result.message ??
-          Object.values(result.errors ?? {})[0]?.[0] ??
-          "The request could not be submitted.",
+        message: parsed.error.issues[0]?.message ?? "Please review your information.",
       });
       return;
     }
 
-    form.reset();
-    setState({
-      status: "success",
-      message: result.message ?? "Request received. The advisory team will review it privately.",
-    });
+    try {
+      const response = await fetch("/api/consultations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(parsed.data),
+      });
+      const result = (await response.json()) as { message?: string; errors?: Record<string, string[]> };
+
+      if (!response.ok) {
+        const fieldError = Object.values(result.errors ?? {})
+          .flat()
+          .find(Boolean);
+        setState({
+          status: "error",
+          message:
+            fieldError ??
+            result.message ??
+            "The request could not be submitted.",
+        });
+        return;
+      }
+
+      form.reset();
+      setState({
+        status: "success",
+        message: "Request Submitted",
+      });
+    } catch {
+      setState({
+        status: "error",
+        message: "The request could not be submitted. Please try again.",
+      });
+    }
   }
 
   const isSubmitting = state.status === "submitting";
@@ -94,26 +114,26 @@ export function ConsultationForm({ variant = "card", className }: ConsultationFo
           <div className="grid gap-5 sm:grid-cols-2">
             <div className="flex flex-col gap-2">
               <Label htmlFor="name">Name</Label>
-              <Input id="name" name="name" autoComplete="name" required />
+              <Input id="name" name="name" autoComplete="name" minLength={2} maxLength={120} required />
             </div>
             <div className="flex flex-col gap-2">
               <Label htmlFor="email">Email</Label>
-              <Input id="email" name="email" type="email" autoComplete="email" required />
+              <Input id="email" name="email" type="email" autoComplete="email" maxLength={180} required />
             </div>
           </div>
           <div className="grid gap-5 sm:grid-cols-2">
             <div className="flex flex-col gap-2">
               <Label htmlFor="market">Primary market</Label>
-              <Input id="market" name="market" placeholder="Malibu, Bel Air, Beverly Hills..." required />
+              <Input id="market" name="market" placeholder="Malibu, Bel Air, Beverly Hills..." minLength={2} maxLength={120} required />
             </div>
             <div className="flex flex-col gap-2">
               <Label htmlFor="matter">Matter type</Label>
-              <Input id="matter" name="matter" placeholder="Remediation, structural, diligence..." required />
+              <Input id="matter" name="matter" placeholder="Remediation, structural, diligence..." minLength={2} maxLength={160} required />
             </div>
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="message">Brief context</Label>
-            <Textarea id="message" name="message" rows={5} required />
+            <Textarea id="message" name="message" rows={5} minLength={20} maxLength={2500} required />
           </div>
           <Button type="submit" size="lg" className="justify-self-start" disabled={isSubmitting}>
             {isSubmitting ? <Loader2 data-icon="inline-start" className="animate-spin" /> : null}

@@ -2,7 +2,7 @@
 
 // Global error boundary — replaces the entire root layout when an unhandled
 // error reaches the top of the React tree. Must be a Client Component and
-// must NOT depend on any context providers (ClerkProvider, etc.) because
+// must NOT depend on any context providers because
 // those are not available at this boundary.
 
 export default function GlobalError({

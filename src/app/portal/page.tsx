@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowRight, FileText, Folder, Shield } from "lucide-react";
+import { usePortalAccess } from "@/components/portal/access-provider";
 
 // ─── Design tokens ─────────────────────────────────────────────────────────────
 const GOLD  = "#c9b58a";
@@ -67,6 +68,7 @@ function fmt(date: string) {
 
 // ─── Main ───────────────────────────────────────────────────────────────────────
 export default function PortalPage() {
+  const { access, can } = usePortalAccess();
   const [matters, setMatters]   = useState<Matter[]>([]);
   const [documents, setDocuments] = useState<Document[]>([]);
   const [loading, setLoading]   = useState(true);
@@ -113,28 +115,34 @@ export default function PortalPage() {
           Private Office
         </span>
         <nav className="flex items-center gap-5">
-          <Link
-            href="/portal/matters"
-            className="text-[0.68rem] uppercase tracking-[0.18em] opacity-40 hover:opacity-80 transition-opacity"
-            style={{ color: TITAN }}
-          >
-            Engagements
-          </Link>
-          <Link
-            href="/portal/vault"
-            className="text-[0.68rem] uppercase tracking-[0.18em] opacity-40 hover:opacity-80 transition-opacity"
-            style={{ color: TITAN }}
-          >
-            Vault
-          </Link>
-          <Link
-            href="/portal/admin"
-            className="flex items-center gap-1 text-[0.68rem] uppercase tracking-[0.16em] opacity-30 hover:opacity-60 transition-opacity"
-            style={{ color: TITAN }}
-          >
-            <Shield size={10} />
-            Admin
-          </Link>
+          {can("engagements.view") && (
+            <Link
+              href="/portal/matters"
+              className="text-[0.68rem] uppercase tracking-[0.18em] opacity-40 hover:opacity-80 transition-opacity"
+              style={{ color: TITAN }}
+            >
+              Engagements
+            </Link>
+          )}
+          {can("documents.view") && (
+            <Link
+              href="/portal/vault"
+              className="text-[0.68rem] uppercase tracking-[0.18em] opacity-40 hover:opacity-80 transition-opacity"
+              style={{ color: TITAN }}
+            >
+              Vault
+            </Link>
+          )}
+          {(can("users.invite") || can("access.manage")) && (
+            <Link
+              href="/portal/admin"
+              className="flex items-center gap-1 text-[0.68rem] uppercase tracking-[0.16em] opacity-30 hover:opacity-60 transition-opacity"
+              style={{ color: TITAN }}
+            >
+              <Shield size={10} />
+              {access.role === "super_admin" ? "Super Admin" : "Admin"}
+            </Link>
+          )}
         </nav>
       </header>
 
