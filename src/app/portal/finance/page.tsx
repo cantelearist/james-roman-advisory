@@ -73,7 +73,8 @@ export default function FinancePage() {
 
   async function submitContract(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     setBusy("contract");
     setError("");
     const response = await fetch("/api/contracts", {
@@ -89,7 +90,7 @@ export default function FinancePage() {
     const result = await response.json();
     if (!response.ok) setError(result.error ?? "Contract could not be created.");
     else {
-      event.currentTarget.reset();
+      formElement.reset();
       await loadRecords(matterId);
     }
     setBusy("");
@@ -97,7 +98,8 @@ export default function FinancePage() {
 
   async function submitInvoice(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     setBusy("invoice");
     setError("");
     const response = await fetch("/api/invoices", {
@@ -118,7 +120,7 @@ export default function FinancePage() {
     const result = await response.json();
     if (!response.ok) setError(result.error ?? "Invoice could not be created.");
     else {
-      event.currentTarget.reset();
+      formElement.reset();
       await loadRecords(matterId);
     }
     setBusy("");
@@ -126,7 +128,8 @@ export default function FinancePage() {
 
   async function submitChangeOrder(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     const source = String(form.get("source"));
     setBusy("change-order");
     setError("");
@@ -146,7 +149,7 @@ export default function FinancePage() {
     const result = await response.json();
     if (!response.ok) setError(result.error ?? "Change order could not be created.");
     else {
-      event.currentTarget.reset();
+      formElement.reset();
       await loadRecords(matterId);
     }
     setBusy("");
