@@ -7,7 +7,7 @@
 import { NextResponse } from "next/server";
 
 import { ensureVaultTables, getDb, logFileAccess } from "@/lib/db";
-import { deleteFromVault } from "@/lib/vault";
+import { deleteFromVault, downloadFromVault } from "@/lib/vault";
 import {
   authorizeCapability,
   canReceiveAudience,
@@ -90,20 +90,21 @@ export async function GET(request: Request, routeContext: RouteContext) {
       return NextResponse.json({ error: "Storage not configured" }, { status: 503 });
     }
 
-    const blobRes = await fetch(`https://blob.vercel-storage.com/${doc.blob_pathname}`, {
-      headers: { Authorization: `Bearer ${blobToken}` },
-    });
-
-    if (!blobRes.ok) {
+    const blobResult = await downloadFromVault(String(doc.blob_pathname));
+    if (!blobResult || blobResult.statusCode !== 200 || !blobResult.stream) {
       return NextResponse.json({ error: "File not found in storage" }, { status: 404 });
     }
 
     const filename = encodeURIComponent(doc.original_name as string);
-    return new NextResponse(blobRes.body, {
+    return new NextResponse(blobResult.stream, {
       headers: {
-        "Content-Type": (doc.content_type as string) || "application/octet-stream",
+        "Content-Type":
+          (doc.content_type as string) ||
+          blobResult.blob.contentType ||
+          "application/octet-stream",
         "Content-Disposition": `attachment; filename="${filename}"`,
         "Cache-Control": "private, no-store",
+        "X-Content-Type-Options": "nosniff",
       },
     });
   } catch (err) {

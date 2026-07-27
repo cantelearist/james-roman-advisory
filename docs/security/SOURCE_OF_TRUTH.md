@@ -8,7 +8,7 @@ Updated 2026-07-26.
 |---|---|
 | Auth | First-party email/password sessions |
 | Database | Neon PostgreSQL |
-| File storage | Vercel Blob |
+| File storage | Private Vercel Blob through authenticated application proxies |
 | Email | Resend |
 | Hosting | Vercel |
 
