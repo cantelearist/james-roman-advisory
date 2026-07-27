@@ -10,10 +10,37 @@ export type AuthUser = { id: string; name: string; email: string; role: Role };
 export type AuthContext = { userId: string; user: AuthUser; role: Role };
 
 export const SESSION_COOKIE = "jra_session";
+export const MFA_CHALLENGE_COOKIE = "jra_mfa_challenge";
 const SESSION_TTL_SECONDS = 60 * 60 * 12;
 
-function hashSessionToken(token: string): string {
+export function hashSessionToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
+}
+
+export function setMfaChallengeCookie(
+  response: { cookies: { set: (name: string, value: string, options: Record<string, unknown>) => void } },
+  token: string,
+  expiresAt: Date,
+) {
+  response.cookies.set(MFA_CHALLENGE_COOKIE, token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "strict",
+    path: "/",
+    expires: expiresAt,
+  });
+}
+
+export function clearMfaChallengeCookie(
+  response: { cookies: { set: (name: string, value: string, options: Record<string, unknown>) => void } },
+) {
+  response.cookies.set(MFA_CHALLENGE_COOKIE, "", {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "strict",
+    path: "/",
+    maxAge: 0,
+  });
 }
 
 function toAuthUser(row: Record<string, unknown>): AuthUser {

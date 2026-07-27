@@ -23,6 +23,11 @@ export default function SignInForm() {
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error ?? "Unable to sign in");
+      if (result.mfaRequired) {
+        const redirectUrl = searchParams.get("redirect_url") || "/portal";
+        window.location.assign(`/mfa?redirect_url=${encodeURIComponent(redirectUrl)}`);
+        return;
+      }
       const redirectUrl = searchParams.get("redirect_url") || "/portal";
       window.location.assign(redirectUrl.startsWith("/") ? redirectUrl : "/portal");
     } catch (cause) {
@@ -52,6 +57,9 @@ export default function SignInForm() {
             {busy ? "Signing in…" : "Sign in"}
           </button>
         </form>
+        <p className="mt-5 text-center text-sm text-[#b2a898]/60">
+          <Link className="text-[#c9b58a] underline-offset-4 hover:underline" href="/forgot-password">Forgot your password?</Link>
+        </p>
         <p className="mt-7 text-center text-sm text-[#b2a898]/60">
           New to the office? <Link className="text-[#c9b58a] underline-offset-4 hover:underline" href="/sign-up">Create an account</Link>
         </p>

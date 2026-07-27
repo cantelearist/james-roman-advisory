@@ -133,6 +133,15 @@ export default function PortalPage() {
               Vault
             </Link>
           )}
+          {can("finance.view") && (
+            <Link
+              href="/portal/finance"
+              className="text-[0.68rem] uppercase tracking-[0.18em] opacity-40 hover:opacity-80 transition-opacity"
+              style={{ color: TITAN }}
+            >
+              Finance
+            </Link>
+          )}
           {(can("users.invite") || can("access.manage")) && (
             <Link
               href="/portal/admin"

@@ -1,6 +1,6 @@
 # Authentication and Access Review
 
-Updated 2026-07-26 after the engagement-scoped authorization migration.
+Updated 2026-07-26 after the engagement-scoped authorization and staff MFA migration.
 
 ## Current model
 
@@ -15,6 +15,9 @@ Updated 2026-07-26 after the engagement-scoped authorization migration.
 - Existing `clients.user_id` ownership is retained for compatibility, but `engagement_memberships` is the canonical engagement-access boundary.
 - Engagement events and documents carry an explicit audience. Clients receive only published `client` resources. Contractors receive only `contractor` resources and published `client` resources.
 - Invitations are one-time, hashed tokens stored in `auth_invitations` and expire after seven days.
+- Password recovery uses single-use, hashed tokens that expire after 30 minutes. Successful recovery revokes every existing session and pending login challenge.
+- Super Admin, Admin, and Contractor accounts must complete RFC 6238 authenticator verification before a full session is issued. The pre-authentication challenge expires after ten minutes.
+- TOTP secrets use AES-256-GCM encryption with `MFA_ENCRYPTION_KEY`; one-use recovery codes are stored only as SHA-256 hashes.
 - New account registration requires an invitation or a pre-provisioned passwordless account.
 - Role, profile, membership, suspension, and invitation changes are written to `access_audit_events`.
 
@@ -36,11 +39,12 @@ authority, suspend accounts, or assign and revoke Engagement Memberships.
 - `BLOB_READ_WRITE_TOKEN` for vault storage
 - `SEED_KEY` and `SEED_PASSWORD` only when the controlled seed endpoint is needed
 - `STAGING_PASSWORD` for the staging host gate
+- `MFA_ENCRYPTION_KEY` as a base64-encoded 32-byte encryption key
 
 ## Remaining review items
 
-- Add and verify a production password-reset flow before broad client onboarding.
-- Add a second factor to the first-party session system before granting high-risk staff access.
+- Complete live authenticator enrollment for every production staff identity before broad client onboarding.
+- Define a documented, identity-verified Super Admin procedure for lost-factor recovery.
 - Configure Upstash variables to enable rate limiting; the code currently fails open when absent.
 - Reconcile existing client records whose former provider identifiers cannot be mapped automatically.
 - Move the authorization policy into database row-level security before granting direct database access to any secondary application or reporting tool.

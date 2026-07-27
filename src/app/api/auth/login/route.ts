@@ -1,8 +1,13 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { createSession, setSessionCookie } from "@/lib/auth";
+import {
+  createSession,
+  setMfaChallengeCookie,
+  setSessionCookie,
+} from "@/lib/auth";
 import { ensureAuthTables, getDb } from "@/lib/db";
+import { hashAuthToken } from "@/lib/mfa";
 import { verifyPassword } from "@/lib/password";
 
 export const runtime = "nodejs";
@@ -39,6 +44,42 @@ export async function POST(request: Request) {
   }
   if (row.status !== "active") {
     return NextResponse.json({ error: "This account is suspended" }, { status: 403 });
+  }
+
+  if (["super_admin", "admin", "contractor"].includes(String(row.role))) {
+    const methods = await sql`
+      SELECT enabled_at
+      FROM auth_mfa_methods
+      WHERE user_id = ${String(row.id)}
+      LIMIT 1
+    `;
+    const token = crypto.randomUUID() + crypto.randomUUID();
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+    const purpose = methods[0]?.enabled_at ? "verify_mfa" : "enroll_mfa";
+    await sql`
+      DELETE FROM auth_login_challenges
+      WHERE user_id = ${String(row.id)}
+         OR expires_at <= NOW()
+         OR consumed_at IS NOT NULL
+    `;
+    await sql`
+      INSERT INTO auth_login_challenges (
+        id, user_id, token_hash, purpose, expires_at
+      )
+      VALUES (
+        ${crypto.randomUUID()},
+        ${String(row.id)},
+        ${hashAuthToken(token)},
+        ${purpose},
+        ${expiresAt.toISOString()}
+      )
+    `;
+    const response = NextResponse.json({
+      mfaRequired: true,
+      mode: purpose === "enroll_mfa" ? "enroll" : "verify",
+    });
+    setMfaChallengeCookie(response, token, expiresAt);
+    return response;
   }
 
   const { token, expiresAt } = await createSession(String(row.id));

@@ -145,6 +145,38 @@ export interface ConsultationNotificationData {
   message: string;
 }
 
+export async function sendPasswordRecovery(data: {
+  name: string;
+  email: string;
+  token: string;
+}): Promise<void> {
+  if (!process.env.RESEND_API_KEY) {
+    console.warn("email.skipped", "RESEND_API_KEY not set — password recovery not sent");
+    return;
+  }
+  const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.jamesroman.la").replace(/\/$/, "");
+  const recoveryUrl = `${siteUrl}/reset-password?token=${encodeURIComponent(data.token)}`;
+  const resend = new Resend(process.env.RESEND_API_KEY);
+  const { error } = await resend.emails.send({
+    from: FROM,
+    to: [data.email],
+    subject: "Private Office password recovery",
+    html: `<!doctype html>
+      <html><body style="margin:0;padding:40px 20px;background:#0a0b0e;color:#ece6d6;font-family:Helvetica,Arial,sans-serif">
+      <div style="max-width:560px;margin:auto;border:1px solid rgba(201,181,138,.2);padding:36px;background:#0d0f14">
+      <p style="margin:0 0 28px;color:#c9b58a;font-size:11px;letter-spacing:.24em;text-transform:uppercase">James Roman Advisory · Private Office</p>
+      <h1 style="font-size:24px;font-weight:300;margin:0 0 18px">Reset your password</h1>
+      <p style="color:#b2a898;line-height:1.7;margin:0 0 24px">Hello ${escapeHtml(data.name)}, use the secure link below within 30 minutes. If you did not request this, no action is required.</p>
+      <a href="${recoveryUrl}" style="display:inline-block;border:1px solid #c9b58a;color:#c9b58a;padding:13px 18px;text-decoration:none;font-size:12px;letter-spacing:.16em;text-transform:uppercase">Choose a new password</a>
+      <p style="color:#b2a898;opacity:.55;font-size:12px;line-height:1.6;margin:28px 0 0">For your protection, a successful reset signs out every active Private Office session.</p>
+      </div></body></html>`,
+  });
+  if (error) {
+    console.error("email.failed", { type: "password_recovery", error });
+    throw new Error("Password recovery email was not accepted");
+  }
+}
+
 export async function sendConsultationNotification(
   data: ConsultationNotificationData,
 ): Promise<void> {

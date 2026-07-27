@@ -7,6 +7,7 @@ import {
   ArrowLeft, ArrowRight, Clock, FileText, ChevronRight, User,
   MapPin, StickyNote, CheckCircle2, AlertCircle,
   Send, Loader2, Download, GitBranch, Activity, X,
+  MessageSquare,
 } from "lucide-react";
 import { usePortalAccess } from "@/components/portal/access-provider";
 
@@ -59,6 +60,16 @@ interface Document {
   category: string;
   size_bytes?: number;
   content_type?: string;
+  created_at: string;
+}
+
+interface EngagementMessage {
+  id: string;
+  sender_id: string;
+  sender_name: string;
+  sender_role: string;
+  body: string;
+  audience: "internal" | "contractor" | "client";
   created_at: string;
 }
 
@@ -646,23 +657,28 @@ function WorkflowPanel({
 }
 
 // ─── Main page ────────────────────────────────────────────────────────────────
-type Tab = "timeline" | "workflow";
+type Tab = "timeline" | "messages" | "workflow";
 
 export default function MatterDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
-  const { can } = usePortalAccess();
+  const { can, user } = usePortalAccess();
   const canUpdateEngagement = can("engagements.update");
   const canManageTimeline = can("timeline.manage");
 
   const [matter, setMatter]         = useState<Matter | null>(null);
   const [events, setEvents]         = useState<MatterEvent[]>([]);
   const [documents, setDocuments]   = useState<Document[]>([]);
+  const [messages, setMessages]     = useState<EngagementMessage[]>([]);
   const [loading, setLoading]       = useState(true);
   const [activeTab, setActiveTab]   = useState<Tab>("timeline");
   const [noteText, setNoteText]     = useState("");
   const [addingNote, setAddingNote] = useState(false);
   const [noteError, setNoteError]   = useState("");
+  const [messageText, setMessageText] = useState("");
+  const [messageAudience, setMessageAudience] = useState<"internal" | "contractor" | "client">("client");
+  const [sendingMessage, setSendingMessage] = useState(false);
+  const [messageError, setMessageError] = useState("");
   const timelineEndRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async () => {
@@ -680,6 +696,20 @@ export default function MatterDetailPage() {
     const timer = window.setTimeout(() => { void load(); }, 0);
     return () => window.clearTimeout(timer);
   }, [load]);
+
+  const loadMessages = useCallback(async () => {
+    if (!can("messages.view")) return;
+    const response = await fetch(`/api/matters/${id}/messages`);
+    if (!response.ok) return;
+    const data = await response.json();
+    setMessages(data.messages ?? []);
+  }, [can, id]);
+
+  useEffect(() => {
+    if (activeTab !== "messages") return;
+    const timer = window.setTimeout(() => { void loadMessages(); }, 0);
+    return () => window.clearTimeout(timer);
+  }, [activeTab, loadMessages]);
 
   useEffect(() => {
     if (activeTab === "timeline") {
@@ -717,6 +747,25 @@ export default function MatterDetailPage() {
       setNoteText("");
     }
     setAddingNote(false);
+  }
+
+  async function submitMessage(e: React.FormEvent) {
+    e.preventDefault();
+    if (!messageText.trim()) return;
+    setSendingMessage(true);
+    setMessageError("");
+    const response = await fetch(`/api/matters/${id}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ body: messageText.trim(), audience: messageAudience }),
+    });
+    const result = await response.json();
+    if (!response.ok) setMessageError(result.error ?? "Message could not be sent.");
+    else {
+      setMessages((current) => [...current, result.message]);
+      setMessageText("");
+    }
+    setSendingMessage(false);
   }
 
   if (loading) {
@@ -792,6 +841,7 @@ export default function MatterDetailPage() {
           <div className="flex gap-0 mb-7 border-b" style={{ borderColor: "rgba(201,181,138,0.1)" }}>
             {([
               { key: "timeline" as Tab, label: "Activity", icon: Activity },
+              ...(can("messages.view") ? [{ key: "messages" as Tab, label: "Messages", icon: MessageSquare }] : []),
               { key: "workflow" as Tab, label: "Workflow", icon: GitBranch },
             ] as const).map(({ key, label, icon: Icon }) => (
               <button
@@ -856,6 +906,56 @@ export default function MatterDetailPage() {
                   </div>
                 </form>
                 </div>
+              )}
+            </div>
+          )}
+
+          {activeTab === "messages" && (
+            <div>
+              <div className="mb-5 min-h-40 space-y-3">
+                {messages.length === 0 ? (
+                  <div className="border py-12 text-center" style={{ borderColor: "rgba(201,181,138,0.08)", background: CARD }}>
+                    <MessageSquare size={20} style={{ color: TITAN, opacity: 0.2, margin: "0 auto 8px" }} />
+                    <p className="text-[0.76rem]" style={{ color: TITAN, opacity: 0.4 }}>No correspondence yet</p>
+                  </div>
+                ) : messages.map((message) => {
+                  const mine = message.sender_id === user.id;
+                  return (
+                    <article key={message.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
+                      <div className="max-w-[82%] border px-4 py-3" style={{
+                        borderColor: mine ? "rgba(201,181,138,0.3)" : "rgba(201,181,138,0.12)",
+                        background: mine ? "rgba(201,181,138,0.08)" : CARD,
+                      }}>
+                        <div className="mb-2 flex items-center gap-3 text-[0.62rem] uppercase tracking-[0.16em]" style={{ color: TITAN, opacity: 0.65 }}>
+                          <span>{mine ? "You" : message.sender_name}</span>
+                          <span>{message.audience}</span>
+                          <time>{fmtTime(message.created_at)}</time>
+                        </div>
+                        <p className="whitespace-pre-wrap text-[0.86rem] leading-6" style={{ color: CREAM }}>{message.body}</p>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+              {can("messages.send") && (
+                <form onSubmit={submitMessage} className="border" style={{ borderColor: "rgba(201,181,138,0.12)", background: CARD }}>
+                  <textarea value={messageText} onChange={(event) => setMessageText(event.target.value)} placeholder="Write a confidential message…" rows={4} maxLength={10000} className="w-full resize-none bg-transparent px-5 pt-4 pb-2 text-[0.86rem] outline-none placeholder:opacity-25" />
+                  <div className="flex items-center justify-between border-t px-5 py-3" style={{ borderColor: "rgba(201,181,138,0.1)" }}>
+                    <div>
+                      {(user.role === "super_admin" || user.role === "admin") && (
+                        <select value={messageAudience} onChange={(event) => setMessageAudience(event.target.value as typeof messageAudience)} className="border border-[#c9b58a]/15 bg-[#0d0f14] px-2 py-1 text-[0.68rem] uppercase tracking-[0.14em] text-[#b2a898]">
+                          <option value="client">Client file</option>
+                          <option value="contractor">Contractors</option>
+                          <option value="internal">Internal</option>
+                        </select>
+                      )}
+                      {messageError && <p className="mt-2 text-[0.72rem] text-red-300">{messageError}</p>}
+                    </div>
+                    <button type="submit" disabled={!messageText.trim() || sendingMessage} className="flex items-center gap-2 text-[0.76rem] uppercase tracking-[0.2em] text-[#c9b58a] disabled:opacity-30">
+                      {sendingMessage ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />} Send
+                    </button>
+                  </div>
+                </form>
               )}
             </div>
           )}
