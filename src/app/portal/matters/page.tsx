@@ -1,653 +1,530 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import {
+  CalendarDays,
+  Check,
+  ChevronDown,
+  Columns3,
+  Filter,
+  LayoutList,
+  Plus,
+  RefreshCw,
+  Save,
+  Search,
+  SlidersHorizontal,
+  Users,
+  X,
+} from "lucide-react";
 import Link from "next/link";
-import { ArrowRight, Plus, X, ChevronRight, FileText, Shield } from "lucide-react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+
 import { usePortalAccess } from "@/components/portal/access-provider";
+import {
+  EmptyState,
+  HealthBadge,
+  MATTER_STATUS_LABELS,
+  PageHeader,
+  PriorityBadge,
+  StatusBadge,
+} from "@/components/portal/portal-ui";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-type MatterStatus =
-  | "intake" | "assessment" | "review"
-  | "vendor_evaluation" | "oversight" | "clearance" | "closed";
-
-type MatterType =
-  | "mold" | "smoke_damage" | "asbestos" | "lead_paint"
-  | "water_intrusion" | "transaction_review" | "other";
-
-interface Client {
-  id: string;
-  name: string;
-  email?: string;
-  phone?: string;
-  notes?: string;
-  created_at: string;
-}
-
-interface Matter {
+type Matter = {
   id: string;
   client_id: string;
-  property_id?: string;
   client_name: string;
-  client_email?: string;
-  property_address?: string;
-  property_city?: string;
-  property_state?: string;
+  property_address?: string | null;
+  property_city?: string | null;
   title: string;
-  type: MatterType;
-  status: MatterStatus;
-  notes?: string;
-  document_count: number;
-  created_at: string;
+  type: string;
+  status: string;
+  owner_user_id?: string | null;
+  owner_name?: string | null;
+  priority: string;
+  health: string;
+  start_date?: string | null;
+  due_date?: string | null;
+  next_action?: string | null;
+  next_action_due_at?: string | null;
+  version: number;
+  open_task_count: number;
+  unread_message_count: number;
+  pending_document_count: number;
+  invoice_balance_cents: string | number;
   updated_at: string;
-}
-
-// ─── Constants ────────────────────────────────────────────────────────────────
-const GOLD   = "#c9b58a";
-const CREAM  = "#ece6d6";
-const TITAN  = "#b2a898";
-const BG     = "#0a0b0e";
-const CARD   = "#0d0f14";
-
-const STATUS_CONFIG: Record<MatterStatus, { label: string; color: string; dot: string }> = {
-  intake:            { label: "Intake",            color: "rgba(178,168,152,0.55)", dot: "#8a8070" },
-  assessment:        { label: "Assessment",        color: "rgba(251,191,36,0.7)",   dot: "#f59e0b" },
-  review:            { label: "Review",            color: "rgba(201,181,138,0.8)",  dot: "#c9b58a" },
-  vendor_evaluation: { label: "Vendor Evaluation", color: "rgba(251,146,60,0.7)",   dot: "#f97316" },
-  oversight:         { label: "Oversight",         color: "rgba(139,92,246,0.7)",   dot: "#8b5cf6" },
-  clearance:         { label: "Clearance",         color: "rgba(74,222,128,0.7)",   dot: "#4ade80" },
-  closed:            { label: "Closed",            color: "rgba(100,116,139,0.5)",  dot: "#64748b" },
 };
 
-const TYPE_LABELS: Record<MatterType, string> = {
-  mold:               "Mold",
-  smoke_damage:       "Smoke Damage",
-  asbestos:           "Asbestos",
-  lead_paint:         "Lead Paint",
-  water_intrusion:    "Water Intrusion",
-  transaction_review: "Transaction Review",
-  other:              "Other",
+type Client = { id: string; name: string; email?: string };
+type Person = { id: string; name: string; role: string };
+type ViewType = "table" | "kanban" | "calendar" | "workload";
+type SavedView = {
+  id: string;
+  name: string;
+  view_type: ViewType;
+  filters: Record<string, string>;
+  columns: string[];
+  sharing: "private" | "workspace";
 };
 
-const STATUS_ORDER: MatterStatus[] = [
-  "intake", "assessment", "review", "vendor_evaluation", "oversight", "clearance", "closed",
+const STATUSES = Object.keys(MATTER_STATUS_LABELS);
+const PRIORITIES = ["low", "normal", "high", "urgent"];
+const HEALTH_OPTIONS = ["on_track", "at_risk", "blocked"];
+const VIEW_OPTIONS: Array<{ value: ViewType; label: string; icon: typeof LayoutList }> = [
+  { value: "table", label: "Table", icon: LayoutList },
+  { value: "kanban", label: "Kanban", icon: Columns3 },
+  { value: "calendar", label: "Calendar", icon: CalendarDays },
+  { value: "workload", label: "Workload", icon: Users },
 ];
 
-// ─── Status pill ──────────────────────────────────────────────────────────────
-function StatusPill({ status }: { status: MatterStatus }) {
-  const cfg = STATUS_CONFIG[status];
-  return (
-    <span className="inline-flex items-center gap-1.5 text-[0.68rem] uppercase tracking-[0.18em] px-2.5 py-1 rounded-sm border"
-      style={{ color: cfg.color, borderColor: cfg.dot + "44", background: cfg.dot + "14" }}>
-      <span className="size-1.5 rounded-full" style={{ background: cfg.dot }} />
-      {cfg.label}
-    </span>
-  );
+function formatDate(value?: string | null): string {
+  if (!value) return "—";
+  return new Date(value).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "2-digit" });
 }
 
-// ─── Modal ────────────────────────────────────────────────────────────────────
-type Step = 1 | 2 | 3;
-
-interface ModalState {
-  step: Step;
-  // Step 1 — client
-  clientMode: "new" | "existing";
-  selectedClientId: string;
-  clientName: string;
-  clientEmail: string;
-  clientPhone: string;
-  // Step 2 — property
-  skipProperty: boolean;
-  propertyAddress: string;
-  propertyCity: string;
-  // Step 3 — matter
-  matterTitle: string;
-  matterType: MatterType;
-  matterNotes: string;
-}
-
-const DEFAULT_MODAL: ModalState = {
-  step: 1,
-  clientMode: "new",
-  selectedClientId: "",
-  clientName: "",
-  clientEmail: "",
-  clientPhone: "",
-  skipProperty: false,
-  propertyAddress: "",
-  propertyCity: "Malibu",
-  matterTitle: "",
-  matterType: "other",
-  matterNotes: "",
-};
-
-function NewEngagementModal({
+function NewEngagementDialog({
   clients,
-  canCreateClient,
   onClose,
   onCreated,
 }: {
   clients: Client[];
-  canCreateClient: boolean;
   onClose: () => void;
   onCreated: () => void;
 }) {
-  const [state, setState] = useState<ModalState>({
-    ...DEFAULT_MODAL,
-    clientMode: canCreateClient ? "new" : "existing",
-  });
+  const { can } = usePortalAccess();
+  const [mode, setMode] = useState<"existing" | "new">(clients.length > 0 ? "existing" : "new");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
-  const set = (patch: Partial<ModalState>) => setState((s) => ({ ...s, ...patch }));
-
-  const canAdvance1 = state.clientMode === "existing"
-    ? !!state.selectedClientId
-    : !!state.clientName.trim();
-
-  const canAdvance2 = true; // property is optional
-
-  const canSubmit = !!state.matterTitle.trim();
-
-  async function submit() {
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
     setSaving(true);
     setError("");
+    const form = new FormData(event.currentTarget);
     try {
-      let clientId = state.selectedClientId;
-
-      // Create client if new
-      if (state.clientMode === "new") {
-        const res = await fetch("/api/clients", {
+      let clientId = String(form.get("clientId") ?? "");
+      if (mode === "new") {
+        const response = await fetch("/api/clients", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            name: state.clientName,
-            email: state.clientEmail || undefined,
-            phone: state.clientPhone || undefined,
+            name: form.get("clientName"),
+            email: form.get("clientEmail") || null,
+            phone: form.get("clientPhone") || null,
           }),
         });
-        if (!res.ok) throw new Error(await res.text());
-        const { client } = await res.json();
-        clientId = client.id;
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error ?? "Client could not be created.");
+        clientId = data.client.id;
       }
+      if (!clientId) throw new Error("Select a client.");
 
-      // Create property if provided
-      let propertyId: string | undefined;
-      if (!state.skipProperty && state.propertyAddress.trim()) {
-        const res = await fetch("/api/properties", {
+      let propertyId: string | null = null;
+      if (String(form.get("propertyAddress") ?? "").trim()) {
+        const response = await fetch("/api/properties", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             clientId,
-            address: state.propertyAddress,
-            city: state.propertyCity || "Malibu",
+            address: form.get("propertyAddress"),
+            city: form.get("propertyCity") || "Malibu",
             state: "CA",
           }),
         });
-        if (!res.ok) throw new Error(await res.text());
-        const { property } = await res.json();
-        propertyId = property.id;
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error ?? "Property could not be created.");
+        propertyId = data.property.id;
       }
 
-      // Create matter
-      const res = await fetch("/api/matters", {
+      const response = await fetch("/api/matters", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           clientId,
           propertyId,
-          title: state.matterTitle,
-          type: state.matterType,
-          notes: state.matterNotes || undefined,
+          title: form.get("title"),
+          type: form.get("type"),
+          notes: form.get("notes"),
         }),
       });
-      if (!res.ok) throw new Error(await res.text());
-
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error ?? "Engagement could not be created.");
       onCreated();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Something went wrong");
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : "Engagement could not be created.");
     } finally {
       setSaving(false);
     }
   }
 
-  const inputCls = "w-full bg-transparent border-b py-2 text-[0.88rem] outline-none focus:border-opacity-100 transition-colors placeholder-opacity-30";
-  const inputStyle = { borderColor: "rgba(201,181,138,0.25)", color: CREAM };
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(8px)" }}>
-      <div className="w-full max-w-md border p-8 relative"
-        style={{ background: CARD, borderColor: "rgba(201,181,138,0.15)" }}>
-
-        {/* Close */}
-        <button onClick={onClose} className="absolute top-5 right-5 opacity-40 hover:opacity-100 transition-opacity">
-          <X size={16} style={{ color: CREAM }} />
-        </button>
-
-        {/* Header */}
-        <div className="mb-8">
-          <p className="text-[0.62rem] uppercase tracking-[0.34em] mb-2" style={{ color: GOLD, opacity: 0.7 }}>
-            Step {state.step} of 3
-          </p>
-          <div className="flex gap-1 mb-5">
-            {([1, 2, 3] as Step[]).map((s) => (
-              <div key={s} className="h-px flex-1 transition-all duration-500"
-                style={{ background: s <= state.step ? GOLD : "rgba(201,181,138,0.15)" }} />
-            ))}
-          </div>
-          <h2 className="font-heading font-light text-[1.4rem] tracking-[-0.02em]" style={{ color: CREAM }}>
-            {state.step === 1 && "Client"}
-            {state.step === 2 && "Property"}
-            {state.step === 3 && "Engagement"}
-          </h2>
-          <p className="text-[0.8rem] mt-1" style={{ color: TITAN, opacity: 0.7 }}>
-            {state.step === 1 && (canCreateClient
-              ? "Select an existing client or create a new one."
-              : "Select a client within your assigned portfolio.")}
-            {state.step === 2 && "Add a property address, or skip if not applicable."}
-            {state.step === 3 && "Define the matter type and initial scope."}
-          </p>
-        </div>
-
-        {/* Step 1 — Client */}
-        {state.step === 1 && (
-          <div className="space-y-5">
-            <div className="flex gap-3">
-              {(["new", "existing"] as const)
-                .filter((mode) => canCreateClient || mode === "existing")
-                .map((mode) => (
-                <button key={mode} onClick={() => set({ clientMode: mode })}
-                  className="flex-1 py-2 text-[0.72rem] uppercase tracking-[0.18em] border transition-all"
-                  style={{
-                    borderColor: state.clientMode === mode ? GOLD : "rgba(201,181,138,0.15)",
-                    color: state.clientMode === mode ? GOLD : TITAN,
-                    background: state.clientMode === mode ? "rgba(201,181,138,0.06)" : "transparent",
-                  }}>
-                  {mode === "new" ? "New Client" : "Existing"}
-                </button>
-              ))}
+    <div className="portal-dialog-overlay" role="dialog" aria-modal="true" aria-labelledby="new-engagement-title">
+      <button className="portal-command-scrim" onClick={onClose} aria-label="Close dialog" />
+      <section className="portal-dialog portal-engagement-dialog">
+        <header>
+          <div><p className="portal-eyebrow">New record</p><h2 id="new-engagement-title">Create engagement</h2></div>
+          <button className="portal-icon-button" onClick={onClose} aria-label="Close"><X size={18} /></button>
+        </header>
+        <form onSubmit={submit}>
+          {can("clients.manage") && (
+            <div className="portal-segmented">
+              <button type="button" className={mode === "existing" ? "is-active" : undefined} onClick={() => setMode("existing")} disabled={clients.length === 0}>Existing client</button>
+              <button type="button" className={mode === "new" ? "is-active" : undefined} onClick={() => setMode("new")}>New client</button>
             </div>
-
-            {state.clientMode === "new" ? (
-              <>
-                <input className={inputCls} style={inputStyle} placeholder="Full name *"
-                  value={state.clientName} onChange={(e) => set({ clientName: e.target.value })} />
-                <input className={inputCls} style={inputStyle} placeholder="Email"
-                  type="email" value={state.clientEmail} onChange={(e) => set({ clientEmail: e.target.value })} />
-                <input className={inputCls} style={inputStyle} placeholder="Phone"
-                  type="tel" value={state.clientPhone} onChange={(e) => set({ clientPhone: e.target.value })} />
-              </>
-            ) : (
-              <select className={inputCls} style={inputStyle}
-                value={state.selectedClientId}
-                onChange={(e) => set({ selectedClientId: e.target.value })}>
-                <option value="">Select a client…</option>
-                {clients.map((c) => (
-                  <option key={c.id} value={c.id} style={{ background: CARD }}>{c.name}</option>
-                ))}
-              </select>
-            )}
-          </div>
-        )}
-
-        {/* Step 2 — Property */}
-        {state.step === 2 && (
-          <div className="space-y-5">
-            <label className="flex items-center gap-2.5 cursor-pointer">
-              <input type="checkbox" checked={state.skipProperty}
-                onChange={(e) => set({ skipProperty: e.target.checked })}
-                className="accent-[#c9b58a]" />
-              <span className="text-[0.8rem]" style={{ color: TITAN }}>No property address</span>
-            </label>
-            {!state.skipProperty && (
-              <>
-                <input className={inputCls} style={inputStyle} placeholder="Street address *"
-                  value={state.propertyAddress} onChange={(e) => set({ propertyAddress: e.target.value })} />
-                <input className={inputCls} style={inputStyle} placeholder="City"
-                  value={state.propertyCity} onChange={(e) => set({ propertyCity: e.target.value })} />
-              </>
-            )}
-          </div>
-        )}
-
-        {/* Step 3 — Matter */}
-        {state.step === 3 && (
-          <div className="space-y-5">
-            <input className={inputCls} style={inputStyle} placeholder="Engagement title *"
-              value={state.matterTitle} onChange={(e) => set({ matterTitle: e.target.value })} />
-            <select className={inputCls} style={inputStyle}
-              value={state.matterType}
-              onChange={(e) => set({ matterType: e.target.value as MatterType })}>
-              <option value="mold" style={{ background: CARD }}>Mold</option>
-              <option value="smoke_damage" style={{ background: CARD }}>Smoke Damage</option>
-              <option value="asbestos" style={{ background: CARD }}>Asbestos</option>
-              <option value="lead_paint" style={{ background: CARD }}>Lead Paint</option>
-              <option value="water_intrusion" style={{ background: CARD }}>Water Intrusion</option>
-              <option value="transaction_review" style={{ background: CARD }}>Transaction Review</option>
-              <option value="other" style={{ background: CARD }}>Other</option>
-            </select>
-            <textarea className={inputCls} style={inputStyle} placeholder="Initial notes (optional)"
-              rows={3} value={state.matterNotes}
-              onChange={(e) => set({ matterNotes: e.target.value })} />
-          </div>
-        )}
-
-        {error && (
-          <p className="mt-4 text-[0.78rem]" style={{ color: "#f87171" }}>{error}</p>
-        )}
-
-        {/* Navigation */}
-        <div className="flex items-center justify-between mt-8">
-          {state.step > 1 ? (
-            <button onClick={() => set({ step: (state.step - 1) as Step })}
-              className="text-[0.76rem] uppercase tracking-[0.18em] opacity-50 hover:opacity-100 transition-opacity"
-              style={{ color: TITAN }}>
-              Back
-            </button>
-          ) : <div />}
-
-          {state.step < 3 ? (
-            <button
-              disabled={state.step === 1 ? !canAdvance1 : !canAdvance2}
-              onClick={() => set({ step: (state.step + 1) as Step })}
-              className="flex items-center gap-2 text-[0.82rem] uppercase tracking-[0.2em] disabled:opacity-30 transition-opacity"
-              style={{ color: GOLD }}>
-              Continue <ChevronRight size={14} />
-            </button>
-          ) : (
-            <button disabled={!canSubmit || saving} onClick={submit}
-              className="flex items-center gap-2 text-[0.82rem] uppercase tracking-[0.2em] disabled:opacity-30 transition-opacity"
-              style={{ color: GOLD }}>
-              {saving ? "Creating…" : "Create engagement"} <ArrowRight size={14} />
-            </button>
           )}
-        </div>
-      </div>
+          {mode === "existing" ? (
+            <label className="portal-field">
+              <span>Client</span>
+              <select name="clientId" required defaultValue="">
+                <option value="" disabled>Select client</option>
+                {clients.map((client) => <option key={client.id} value={client.id}>{client.name}{client.email ? ` · ${client.email}` : ""}</option>)}
+              </select>
+            </label>
+          ) : (
+            <div className="portal-form-grid">
+              <label className="portal-field portal-field-wide"><span>Client name</span><input name="clientName" required autoFocus /></label>
+              <label className="portal-field"><span>Email</span><input name="clientEmail" type="email" /></label>
+              <label className="portal-field"><span>Phone</span><input name="clientPhone" /></label>
+            </div>
+          )}
+          <div className="portal-form-divider"><span>Engagement</span></div>
+          <div className="portal-form-grid">
+            <label className="portal-field portal-field-wide"><span>Engagement title</span><input name="title" required placeholder="Clear, specific internal title" /></label>
+            <label className="portal-field">
+              <span>Type</span>
+              <select name="type" defaultValue="other">
+                <option value="mold">Mold</option><option value="smoke_damage">Smoke damage</option>
+                <option value="asbestos">Asbestos</option><option value="lead_paint">Lead paint</option>
+                <option value="water_intrusion">Water intrusion</option>
+                <option value="transaction_review">Transaction review</option><option value="other">Other</option>
+              </select>
+            </label>
+            <label className="portal-field"><span>Property address</span><input name="propertyAddress" /></label>
+            <label className="portal-field"><span>City</span><input name="propertyCity" defaultValue="Malibu" /></label>
+            <label className="portal-field portal-field-wide"><span>Internal context</span><textarea name="notes" rows={3} /></label>
+          </div>
+          {error && <p className="portal-form-error" role="alert">{error}</p>}
+          <footer>
+            <button type="button" className="portal-secondary-button" onClick={onClose}>Cancel</button>
+            <button className="portal-primary-button" disabled={saving}>{saving ? "Creating…" : "Create engagement"}</button>
+          </footer>
+        </form>
+      </section>
     </div>
   );
 }
 
-// ─── Status inline editor ─────────────────────────────────────────────────────
-function StatusEditor({
-  matter,
-  onUpdated,
-}: {
-  matter: Matter;
-  onUpdated: (id: string, status: MatterStatus) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const [saving, setSaving] = useState(false);
+export default function EngagementBoardPage() {
+  const { can, access } = usePortalAccess();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const [matters, setMatters] = useState<Matter[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
+  const [people, setPeople] = useState<Person[]>([]);
+  const [savedViews, setSavedViews] = useState<SavedView[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [query, setQuery] = useState(searchParams.get("q") ?? "");
+  const [status, setStatus] = useState(searchParams.get("status") ?? "");
+  const [priority, setPriority] = useState(searchParams.get("priority") ?? "");
+  const [health, setHealth] = useState(searchParams.get("health") ?? "");
+  const [owner, setOwner] = useState(searchParams.get("owner_id") ?? "");
+  const [view, setView] = useState<ViewType>((searchParams.get("view") as ViewType) || "table");
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [showFilters, setShowFilters] = useState(false);
+  const [showColumns, setShowColumns] = useState(false);
+  const [showCreate, setShowCreate] = useState(searchParams.get("new") === "1");
+  const [showSave, setShowSave] = useState(false);
+  const [savingCell, setSavingCell] = useState("");
+  const [now] = useState(() => Date.now());
+  const [visibleColumns, setVisibleColumns] = useState([
+    "client", "stage", "owner", "priority", "health", "next_action", "due", "work", "activity",
+  ]);
 
-  async function change(status: MatterStatus) {
-    if (status === matter.status) { setOpen(false); return; }
-    setSaving(true);
-    await fetch(`/api/matters/${matter.id}`, {
+  const updateUrl = useCallback((patch: Record<string, string>) => {
+    const params = new URLSearchParams(searchParams.toString());
+    for (const [key, value] of Object.entries(patch)) {
+      if (value) params.set(key, value);
+      else params.delete(key);
+    }
+    params.delete("new");
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  }, [pathname, router, searchParams]);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    const params = new URLSearchParams();
+    if (query.trim()) params.set("q", query.trim());
+    if (status) params.set("status", status);
+    if (priority) params.set("priority", priority);
+    if (health) params.set("health", health);
+    if (owner) params.set("owner_id", owner);
+    try {
+      const responses = await Promise.all([
+        fetch(`/api/matters?${params.toString()}`, { cache: "no-store" }),
+        can("clients.view") ? fetch("/api/clients", { cache: "no-store" }) : Promise.resolve(null),
+        (access.role === "super_admin" || access.role === "admin") ? fetch("/api/portal/people", { cache: "no-store" }) : Promise.resolve(null),
+        fetch("/api/portal/views?module=engagements", { cache: "no-store" }),
+      ]);
+      const matterData = await responses[0].json();
+      if (!responses[0].ok) throw new Error(matterData.error ?? "Engagements could not be loaded.");
+      setMatters(matterData.matters ?? []);
+      if (responses[1]?.ok) setClients((await responses[1].json()).clients ?? []);
+      if (responses[2]?.ok) setPeople((await responses[2].json()).people ?? []);
+      if (responses[3].ok) setSavedViews((await responses[3].json()).views ?? []);
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "Engagements could not be loaded.");
+    } finally {
+      setLoading(false);
+    }
+  }, [access.role, can, health, owner, priority, query, status]);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      updateUrl({ q: query, status, priority, health, owner_id: owner, view });
+      void load();
+    }, query ? 220 : 0);
+    return () => window.clearTimeout(timeout);
+  }, [health, load, owner, priority, query, status, updateUrl, view]);
+
+  async function patchMatter(matter: Matter, patch: Record<string, unknown>) {
+    const key = `${matter.id}-${Object.keys(patch)[0]}`;
+    setSavingCell(key);
+    const before = matters;
+    setMatters((rows) => rows.map((row) => row.id === matter.id ? { ...row, ...patch } as Matter : row));
+    const response = await fetch(`/api/matters/${matter.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status }),
+      body: JSON.stringify({ ...patch, version: matter.version }),
     });
-    onUpdated(matter.id, status);
-    setSaving(false);
-    setOpen(false);
+    const data = await response.json();
+    if (!response.ok) {
+      setMatters(before);
+      setError(data.error ?? "The engagement could not be updated.");
+    } else {
+      setMatters((rows) => rows.map((row) => row.id === matter.id ? { ...row, ...data.matter } : row));
+    }
+    setSavingCell("");
   }
 
+  async function bulkUpdate(field: "priority" | "health", value: string) {
+    const targets = matters.filter((matter) => selected.has(matter.id));
+    for (const matter of targets) await patchMatter(matter, { [field]: value });
+    setSelected(new Set());
+  }
+
+  async function saveView(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const response = await fetch("/api/portal/views", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        module: "engagements",
+        name: form.get("name"),
+        viewType: view,
+        filters: { q: query, status, priority, health, owner_id: owner },
+        columns: visibleColumns,
+        sharing: form.get("sharing") === "workspace" ? "workspace" : "private",
+      }),
+    });
+    if (response.ok) {
+      setShowSave(false);
+      await load();
+    } else {
+      const data = await response.json();
+      setError(data.error ?? "The view could not be saved.");
+    }
+  }
+
+  function applySavedView(saved: SavedView) {
+    setQuery(saved.filters.q ?? "");
+    setStatus(saved.filters.status ?? "");
+    setPriority(saved.filters.priority ?? "");
+    setHealth(saved.filters.health ?? "");
+    setOwner(saved.filters.owner_id ?? "");
+    setView(saved.view_type);
+    if (Array.isArray(saved.columns) && saved.columns.length > 0) {
+      setVisibleColumns(saved.columns);
+    }
+  }
+
+  const activeFilters = [status, priority, health, owner].filter(Boolean).length;
+  const groupedByStatus = useMemo(
+    () => STATUSES.map((stage) => ({ stage, matters: matters.filter((matter) => matter.status === stage) })),
+    [matters],
+  );
+  const workload = useMemo(() => {
+    const groups = new Map<string, { name: string; matters: Matter[] }>();
+    for (const matter of matters) {
+      const id = matter.owner_user_id ?? "unassigned";
+      const current = groups.get(id) ?? { name: matter.owner_name ?? "Unassigned", matters: [] };
+      current.matters.push(matter);
+      groups.set(id, current);
+    }
+    return [...groups.values()].sort((a, b) => b.matters.length - a.matters.length);
+  }, [matters]);
+
   return (
-    <div className="relative">
-      <button onClick={() => setOpen((o) => !o)} disabled={saving}
-        className="hover:opacity-80 transition-opacity">
-        <StatusPill status={matter.status} />
-      </button>
-      {open && (
-        <div className="absolute top-full left-0 mt-1.5 z-20 border min-w-[160px] py-1"
-          style={{ background: CARD, borderColor: "rgba(201,181,138,0.2)" }}>
-          {STATUS_ORDER.map((s) => (
-            <button key={s} onClick={() => change(s)}
-              className="w-full flex items-center gap-2 px-3 py-2 text-[0.72rem] uppercase tracking-[0.14em] hover:bg-white/5 transition-colors text-left"
-              style={{ color: s === matter.status ? GOLD : TITAN }}>
-              <span className="size-1.5 rounded-full" style={{ background: STATUS_CONFIG[s].dot }} />
-              {STATUS_CONFIG[s].label}
-            </button>
+    <div className="portal-page portal-board-page">
+      <PageHeader
+        eyebrow="Operating board"
+        title="Engagements"
+        description={`${matters.length} visible engagement${matters.length === 1 ? "" : "s"} · Ownership, urgency and next actions`}
+        actions={
+          <>
+            <button className="portal-secondary-button" onClick={load}><RefreshCw size={14} />Refresh</button>
+            {can("engagements.create") && <button className="portal-primary-button" onClick={() => setShowCreate(true)}><Plus size={15} />New engagement</button>}
+          </>
+        }
+      />
+
+      <div className="portal-view-strip">
+        <div className="portal-saved-views">
+          <button className={!searchParams.get("saved") ? "is-active" : undefined} onClick={() => {
+            setQuery(""); setStatus(""); setPriority(""); setHealth(""); setOwner("");
+          }}>All engagements</button>
+          {savedViews.map((saved) => <button key={saved.id} onClick={() => applySavedView(saved)}>{saved.name}{saved.sharing === "workspace" && <Users size={11} />}</button>)}
+          <button className="portal-save-view-button" onClick={() => setShowSave(true)}><Save size={12} />Save view</button>
+        </div>
+        <div className="portal-view-switcher" aria-label="View type">
+          {VIEW_OPTIONS.map((option) => {
+            const Icon = option.icon;
+            return <button key={option.value} className={view === option.value ? "is-active" : undefined} onClick={() => setView(option.value)}><Icon size={14} /><span>{option.label}</span></button>;
+          })}
+        </div>
+      </div>
+
+      <div className="portal-board-toolbar">
+        <label className="portal-board-search"><Search size={15} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search engagements, clients or properties" /></label>
+        <button className={activeFilters ? "portal-toolbar-button is-active" : "portal-toolbar-button"} onClick={() => setShowFilters((value) => !value)}><Filter size={14} />Filter{activeFilters > 0 && <span>{activeFilters}</span>}<ChevronDown size={13} /></button>
+        {view === "table" && <button className="portal-toolbar-button" onClick={() => setShowColumns((value) => !value)}><SlidersHorizontal size={14} />Columns</button>}
+        {selected.size > 0 && (
+          <div className="portal-bulk-actions">
+            <strong>{selected.size} selected</strong>
+            <select defaultValue="" onChange={(event) => event.target.value && bulkUpdate("priority", event.target.value)}><option value="">Set priority…</option>{PRIORITIES.map((item) => <option key={item}>{item}</option>)}</select>
+            <select defaultValue="" onChange={(event) => event.target.value && bulkUpdate("health", event.target.value)}><option value="">Set health…</option>{HEALTH_OPTIONS.map((item) => <option key={item} value={item}>{item.replace("_", " ")}</option>)}</select>
+            <button onClick={() => setSelected(new Set())}><X size={13} />Clear</button>
+          </div>
+        )}
+      </div>
+
+      {showFilters && (
+        <div className="portal-filter-bar">
+          <label><span>Stage</span><select value={status} onChange={(event) => setStatus(event.target.value)}><option value="">All stages</option>{STATUSES.map((item) => <option key={item} value={item}>{MATTER_STATUS_LABELS[item]}</option>)}</select></label>
+          <label><span>Priority</span><select value={priority} onChange={(event) => setPriority(event.target.value)}><option value="">All priorities</option>{PRIORITIES.map((item) => <option key={item}>{item}</option>)}</select></label>
+          <label><span>Health</span><select value={health} onChange={(event) => setHealth(event.target.value)}><option value="">All health states</option>{HEALTH_OPTIONS.map((item) => <option key={item} value={item}>{item.replace("_", " ")}</option>)}</select></label>
+          <label><span>Owner</span><select value={owner} onChange={(event) => setOwner(event.target.value)}><option value="">All owners</option>{people.map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}</select></label>
+          <button onClick={() => { setStatus(""); setPriority(""); setHealth(""); setOwner(""); }}>Clear filters</button>
+        </div>
+      )}
+
+      {showColumns && (
+        <div className="portal-column-menu">
+          {[
+            ["client", "Client & property"], ["stage", "Stage"], ["owner", "Owner"],
+            ["priority", "Priority"], ["health", "Health"], ["next_action", "Next action"],
+            ["due", "Due date"], ["work", "Open work"], ["activity", "Last activity"],
+          ].map(([key, label]) => (
+            <label key={key}><input type="checkbox" checked={visibleColumns.includes(key)} onChange={() => setVisibleColumns((columns) => columns.includes(key) ? columns.filter((column) => column !== key) : [...columns, key])} /><span><Check size={12} /></span>{label}</label>
           ))}
         </div>
       )}
-    </div>
-  );
-}
 
-// ─── Main dashboard ───────────────────────────────────────────────────────────
-export default function MattersPage() {
-  const { access, can } = usePortalAccess();
-  const canCreateEngagement = can("engagements.create");
-  const canUpdateEngagement = can("engagements.update");
-  const canCreateClient =
-    can("clients.manage")
-    && (access.role === "super_admin" || access.scope === "global");
-  const [matters, setMatters] = useState<Matter[]>([]);
-  const [clients, setClients] = useState<Client[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [statusFilter, setStatusFilter] = useState<MatterStatus | "all">("all");
-  const [showModal, setShowModal] = useState(false);
+      {error && <div className="portal-inline-error" role="alert"><span>{error}</span><button onClick={() => setError("")}><X size={14} /></button></div>}
 
-  const load = useCallback(async () => {
-    const [mr, cr] = await Promise.all([
-      fetch("/api/matters").then((r) => r.json()),
-      fetch("/api/clients").then((r) => r.json()),
-    ]);
-    setMatters(mr.matters ?? []);
-    setClients(cr.clients ?? []);
-    setLoading(false);
-  }, []);
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => { void load(); }, 0);
-    return () => window.clearTimeout(timer);
-  }, [load]);
-
-  function handleStatusUpdate(id: string, status: MatterStatus) {
-    setMatters((prev) => prev.map((m) => m.id === id ? { ...m, status } : m));
-  }
-
-  const filtered = statusFilter === "all"
-    ? matters
-    : matters.filter((m) => m.status === statusFilter);
-
-  // Stats
-  const stats = STATUS_ORDER.reduce<Record<string, number>>((acc, s) => {
-    acc[s] = matters.filter((m) => m.status === s).length;
-    return acc;
-  }, {});
-  const active = matters.filter((m) => m.status !== "closed").length;
-
-  function fmt(date: string) {
-    return new Date(date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "2-digit" });
-  }
-
-  return (
-    <div className="min-h-screen" style={{ background: BG, color: CREAM }}>
-      {/* ── Nav ─────────────────────────────────────────────────────────── */}
-      <header className="px-8 py-5 flex items-center justify-between border-b"
-        style={{ borderColor: "rgba(201,181,138,0.1)", background: "rgba(10,11,14,0.9)", backdropFilter: "blur(8px)" }}>
-        <div className="flex items-center gap-6">
-          <Link href="/portal" className="text-[0.72rem] uppercase tracking-[0.28em] opacity-50 hover:opacity-100 transition-opacity"
-            style={{ color: TITAN }}>
-            ← Portal
-          </Link>
-          <span className="text-[0.72rem] uppercase tracking-[0.28em]" style={{ color: GOLD, opacity: 0.6 }}>
-            Engagement Dashboard
-          </span>
+      {loading ? (
+        <div className="portal-board-loading">{Array.from({ length: 8 }, (_, index) => <span key={index} />)}</div>
+      ) : matters.length === 0 ? (
+        <div className="portal-card">
+          <EmptyState
+            icon={LayoutList}
+            title="No engagements match this view"
+            description={activeFilters || query ? "Clear or adjust the current filters." : "No engagement records are available to your account."}
+            action={can("engagements.create") && !activeFilters && !query ? { href: "/portal/matters?new=1", label: "Create engagement" } : undefined}
+          />
         </div>
-        <div className="flex items-center gap-3">
-          {(can("users.invite") || can("access.manage")) && (
-            <Link href="/portal/admin"
-              className="flex items-center gap-1.5 text-[0.68rem] uppercase tracking-[0.16em] opacity-40 hover:opacity-75 transition-opacity"
-              style={{ color: TITAN }}>
-              <Shield size={11} />
-              Admin
-            </Link>
-          )}
-          {canCreateEngagement && (
-            <button onClick={() => setShowModal(true)}
-              className="flex items-center gap-2 border px-4 py-2 text-[0.76rem] uppercase tracking-[0.2em] hover:opacity-100 transition-opacity"
-              style={{ borderColor: "rgba(201,181,138,0.25)", color: GOLD, opacity: 0.85 }}>
-              <Plus size={13} />
-              New engagement
-            </button>
-          )}
-        </div>
-      </header>
-
-      <div className="px-8 py-10 max-w-7xl mx-auto">
-
-        {/* ── Stats ────────────────────────────────────────────────────────── */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">
-          {[
-            { label: "Total engagements", value: matters.length },
-            { label: "Active",            value: active, accent: true },
-            { label: "In clearance",      value: stats.clearance ?? 0 },
-            { label: "Closed",            value: stats.closed ?? 0 },
-          ].map(({ label, value, accent }) => (
-            <div key={label} className="border p-5"
-              style={{ borderColor: "rgba(201,181,138,0.1)", background: CARD }}>
-              <p className="font-heading font-light text-[2rem] leading-none mb-1"
-                style={{ color: accent ? GOLD : CREAM }}>
-                {value}
-              </p>
-              <p className="text-[0.7rem] uppercase tracking-[0.22em]" style={{ color: TITAN, opacity: 0.55 }}>
-                {label}
-              </p>
+      ) : view === "table" ? (
+        <div className="portal-board-table-wrap portal-card">
+          <div className="portal-board-table" style={{ "--portal-board-columns": visibleColumns.length } as React.CSSProperties}>
+            <div className="portal-board-row portal-board-header">
+              <span className="portal-select-cell"><input type="checkbox" aria-label="Select all engagements" checked={selected.size === matters.length && matters.length > 0} onChange={(event) => setSelected(event.target.checked ? new Set(matters.map((matter) => matter.id)) : new Set())} /></span>
+              <span className="portal-board-title-cell">Engagement</span>
+              {visibleColumns.includes("client") && <span>Client & property</span>}
+              {visibleColumns.includes("stage") && <span>Stage</span>}
+              {visibleColumns.includes("owner") && <span>Owner</span>}
+              {visibleColumns.includes("priority") && <span>Priority</span>}
+              {visibleColumns.includes("health") && <span>Health</span>}
+              {visibleColumns.includes("next_action") && <span>Next action</span>}
+              {visibleColumns.includes("due") && <span>Due</span>}
+              {visibleColumns.includes("work") && <span>Open work</span>}
+              {visibleColumns.includes("activity") && <span>Last activity</span>}
             </div>
-          ))}
-        </div>
-
-        {/* ── Filters ──────────────────────────────────────────────────────── */}
-        <div className="flex flex-wrap gap-2 mb-7">
-          {(["all", ...STATUS_ORDER] as const).map((s) => (
-            <button key={s} onClick={() => setStatusFilter(s)}
-              className="text-[0.68rem] uppercase tracking-[0.18em] px-3 py-1.5 border transition-all"
-              style={{
-                borderColor: statusFilter === s ? GOLD : "rgba(201,181,138,0.12)",
-                color: statusFilter === s ? GOLD : TITAN,
-                opacity: statusFilter === s ? 1 : 0.6,
-                background: statusFilter === s ? "rgba(201,181,138,0.07)" : "transparent",
-              }}>
-              {s === "all" ? `All (${matters.length})` : `${STATUS_CONFIG[s].label} (${stats[s] ?? 0})`}
-            </button>
-          ))}
-        </div>
-
-        {/* ── Table ────────────────────────────────────────────────────────── */}
-        {loading ? (
-          <div className="py-20 text-center text-[0.8rem] uppercase tracking-[0.2em]"
-            style={{ color: TITAN, opacity: 0.4 }}>
-            Loading…
-          </div>
-        ) : filtered.length === 0 ? (
-          <div className="py-20 text-center border"
-            style={{ borderColor: "rgba(201,181,138,0.08)", background: CARD }}>
-            <p className="text-[0.8rem] uppercase tracking-[0.2em] mb-3"
-              style={{ color: TITAN, opacity: 0.4 }}>
-              No engagements
-            </p>
-            {canCreateEngagement && (
-              <button onClick={() => setShowModal(true)}
-                className="text-[0.76rem] uppercase tracking-[0.2em] hover:opacity-100 transition-opacity"
-                style={{ color: GOLD, opacity: 0.6 }}>
-                Create the first one →
-              </button>
-            )}
-          </div>
-        ) : (
-          <div className="border overflow-hidden" style={{ borderColor: "rgba(201,181,138,0.1)" }}>
-            {/* Header */}
-            <div className="hidden md:grid grid-cols-[2fr_2fr_1.5fr_1.5fr_1fr_0.5fr] px-5 py-3 border-b"
-              style={{ borderColor: "rgba(201,181,138,0.08)", background: "rgba(201,181,138,0.03)" }}>
-              {["Client", "Property", "Engagement", "Status", "Updated", ""].map((h) => (
-                <p key={h} className="text-[0.64rem] uppercase tracking-[0.22em]"
-                  style={{ color: TITAN, opacity: 0.45 }}>
-                  {h}
-                </p>
-              ))}
-            </div>
-
-            {filtered.map((matter, i) => (
-              <div key={matter.id}
-                className="grid grid-cols-1 md:grid-cols-[2fr_2fr_1.5fr_1.5fr_1fr_0.5fr] items-center px-5 py-4 border-b hover:bg-white/[0.018] transition-colors gap-3 md:gap-0"
-                style={{ borderColor: "rgba(201,181,138,0.07)", background: i % 2 === 0 ? "transparent" : "rgba(13,15,20,0.6)" }}>
-
-                {/* Client */}
-                <div>
-                  <p className="text-[0.87rem]" style={{ color: CREAM }}>{matter.client_name}</p>
-                  {matter.client_email && (
-                    <p className="text-[0.72rem] mt-0.5" style={{ color: TITAN, opacity: 0.5 }}>{matter.client_email}</p>
-                  )}
-                </div>
-
-                {/* Property */}
-                <div>
-                  {matter.property_address ? (
-                    <>
-                      <p className="text-[0.82rem]" style={{ color: TITAN, opacity: 0.8 }}>{matter.property_address}</p>
-                      <p className="text-[0.72rem] mt-0.5" style={{ color: TITAN, opacity: 0.45 }}>
-                        {matter.property_city}, {matter.property_state}
-                      </p>
-                    </>
-                  ) : (
-                    <p className="text-[0.72rem]" style={{ color: TITAN, opacity: 0.3 }}>—</p>
-                  )}
-                </div>
-
-                {/* Engagement */}
-                <div>
-                  <p className="text-[0.84rem]" style={{ color: CREAM }}>{matter.title}</p>
-                  <p className="text-[0.68rem] uppercase tracking-[0.14em] mt-0.5" style={{ color: TITAN, opacity: 0.45 }}>
-                    {TYPE_LABELS[matter.type]}
-                  </p>
-                </div>
-
-                {/* Status */}
-                <div>
-                  {canUpdateEngagement
-                    ? <StatusEditor matter={matter} onUpdated={handleStatusUpdate} />
-                    : <StatusPill status={matter.status} />}
-                </div>
-
-                {/* Date */}
-                <div>
-                  <p className="text-[0.76rem]" style={{ color: TITAN, opacity: 0.5 }}>{fmt(matter.updated_at)}</p>
-                  {matter.document_count > 0 && (
-                    <div className="flex items-center gap-1 mt-1">
-                      <FileText size={10} style={{ color: GOLD, opacity: 0.5 }} />
-                      <p className="text-[0.66rem]" style={{ color: TITAN, opacity: 0.4 }}>
-                        {matter.document_count} doc{matter.document_count !== 1 ? "s" : ""}
-                      </p>
-                    </div>
-                  )}
-                </div>
-
-                {/* Link */}
-                <div className="flex justify-end">
-                  <Link href={`/portal/matters/${matter.id}`}
-                    className="opacity-30 hover:opacity-80 transition-opacity">
-                    <ArrowRight size={14} style={{ color: CREAM }} />
-                  </Link>
-                </div>
+            {matters.map((matter) => (
+              <div className="portal-board-row" key={matter.id}>
+                <span className="portal-select-cell"><input type="checkbox" aria-label={`Select ${matter.title}`} checked={selected.has(matter.id)} onChange={(event) => setSelected((current) => {
+                  const next = new Set(current); if (event.target.checked) next.add(matter.id); else next.delete(matter.id); return next;
+                })} /></span>
+                <Link className="portal-board-title-cell" href={`/portal/matters/${matter.id}`}><strong>{matter.title}</strong><small>{matter.type.replaceAll("_", " ")}</small></Link>
+                {visibleColumns.includes("client") && <span className="portal-board-secondary"><strong>{matter.client_name}</strong><small>{matter.property_address || "No property"}</small></span>}
+                {visibleColumns.includes("stage") && <span><StatusBadge status={matter.status} /></span>}
+                {visibleColumns.includes("owner") && <span>{matter.owner_name || <em>Unassigned</em>}</span>}
+                {visibleColumns.includes("priority") && <span className="portal-inline-select"><select aria-label={`Priority for ${matter.title}`} value={matter.priority} disabled={savingCell === `${matter.id}-priority` || !can("engagements.update")} onChange={(event) => patchMatter(matter, { priority: event.target.value })}>{PRIORITIES.map((item) => <option key={item}>{item}</option>)}</select><PriorityBadge priority={matter.priority} /></span>}
+                {visibleColumns.includes("health") && <span className="portal-inline-select"><select aria-label={`Health for ${matter.title}`} value={matter.health} disabled={savingCell === `${matter.id}-health` || !can("engagements.update")} onChange={(event) => patchMatter(matter, { health: event.target.value })}>{HEALTH_OPTIONS.map((item) => <option key={item} value={item}>{item.replace("_", " ")}</option>)}</select><HealthBadge health={matter.health} /></span>}
+                {visibleColumns.includes("next_action") && <span className="portal-board-next-action">{matter.next_action || <em>Not set</em>}</span>}
+                {visibleColumns.includes("due") && <span className={matter.due_date && new Date(matter.due_date).getTime() < now ? "is-overdue" : undefined}>{formatDate(matter.due_date)}</span>}
+                {visibleColumns.includes("work") && <span className="portal-work-counts"><strong>{matter.open_task_count}</strong>{matter.unread_message_count > 0 && <small>{matter.unread_message_count} unread</small>}</span>}
+                {visibleColumns.includes("activity") && <span>{formatDate(matter.updated_at)}</span>}
               </div>
             ))}
           </div>
-        )}
-      </div>
+        </div>
+      ) : view === "kanban" ? (
+        <div className="portal-kanban">
+          {groupedByStatus.map((group) => (
+            <section key={group.stage}>
+              <header><StatusBadge status={group.stage} /><span>{group.matters.length}</span></header>
+              <div>{group.matters.length === 0 ? <p>No engagements</p> : group.matters.map((matter) => (
+                <Link href={`/portal/matters/${matter.id}`} key={matter.id}>
+                  <strong>{matter.title}</strong><span>{matter.client_name}</span>
+                  <div><PriorityBadge priority={matter.priority} /><HealthBadge health={matter.health} /></div>
+                  <small>{matter.next_action || "No next action set"}</small>
+                </Link>
+              ))}</div>
+            </section>
+          ))}
+        </div>
+      ) : view === "calendar" ? (
+        <div className="portal-card portal-calendar-list">
+          {matters.filter((matter) => matter.due_date || matter.next_action_due_at).length === 0 ? <EmptyState icon={CalendarDays} title="No engagement dates" description="Due dates and next-action dates will appear here." /> : matters.filter((matter) => matter.due_date || matter.next_action_due_at).sort((a, b) => new Date(a.due_date || a.next_action_due_at!).getTime() - new Date(b.due_date || b.next_action_due_at!).getTime()).map((matter) => (
+            <Link href={`/portal/matters/${matter.id}`} key={matter.id}><time>{formatDate(matter.due_date || matter.next_action_due_at)}</time><div><strong>{matter.title}</strong><span>{matter.next_action || matter.client_name}</span></div><StatusBadge status={matter.status} /></Link>
+          ))}
+        </div>
+      ) : (
+        <div className="portal-workload-grid">
+          {workload.map((group) => (
+            <section className="portal-card" key={group.name}>
+              <header><span className="portal-avatar">{group.name.slice(0, 1)}</span><div><strong>{group.name}</strong><span>{group.matters.length} engagement{group.matters.length === 1 ? "" : "s"} · {group.matters.reduce((total, matter) => total + Number(matter.open_task_count), 0)} open tasks</span></div></header>
+              {group.matters.map((matter) => <Link href={`/portal/matters/${matter.id}`} key={matter.id}><div><strong>{matter.title}</strong><span>{matter.client_name}</span></div><HealthBadge health={matter.health} /><small>{matter.open_task_count}</small></Link>)}
+            </section>
+          ))}
+        </div>
+      )}
 
-      {/* ── Modal ────────────────────────────────────────────────────────────── */}
-      {showModal && canCreateEngagement && (
-        <NewEngagementModal
-          clients={clients}
-          canCreateClient={canCreateClient}
-          onClose={() => setShowModal(false)}
-          onCreated={() => {
-            setShowModal(false);
-            load();
-          }}
-        />
+      {showCreate && <NewEngagementDialog clients={clients} onClose={() => setShowCreate(false)} onCreated={() => { setShowCreate(false); void load(); }} />}
+      {showSave && (
+        <div className="portal-dialog-overlay" role="dialog" aria-modal="true" aria-labelledby="save-view-title">
+          <button className="portal-command-scrim" onClick={() => setShowSave(false)} aria-label="Close dialog" />
+          <section className="portal-dialog portal-save-dialog">
+            <header><div><p className="portal-eyebrow">Workspace view</p><h2 id="save-view-title">Save current view</h2></div><button className="portal-icon-button" onClick={() => setShowSave(false)}><X size={17} /></button></header>
+            <form onSubmit={saveView}>
+              <label className="portal-field"><span>View name</span><input name="name" required autoFocus /></label>
+              {(access.role === "super_admin" || access.role === "admin") && <label className="portal-check-field"><input type="checkbox" name="sharing" value="workspace" />Share with the workspace</label>}
+              <footer><button type="button" className="portal-secondary-button" onClick={() => setShowSave(false)}>Cancel</button><button className="portal-primary-button">Save view</button></footer>
+            </form>
+          </section>
+        </div>
       )}
     </div>
   );

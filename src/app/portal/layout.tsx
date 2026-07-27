@@ -1,6 +1,7 @@
 import { getPortalAccessSummary } from "@/lib/access-control";
 import { requireAuthContext } from "@/lib/auth";
 import { PortalAccessProvider } from "@/components/portal/access-provider";
+import { PortalShell } from "@/components/portal/portal-shell";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +13,7 @@ export default async function PortalLayout({
 
   return (
     <PortalAccessProvider user={context.user} access={access}>
-      {children}
+      <PortalShell>{children}</PortalShell>
     </PortalAccessProvider>
   );
 }

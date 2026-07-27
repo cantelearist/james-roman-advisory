@@ -111,6 +111,7 @@ export async function POST(request: Request) {
   await sql.transaction(queries);
 
   const session = await createSession(String(challenge.user_id));
+  await sql`UPDATE users SET last_active_at = NOW() WHERE id = ${String(challenge.user_id)}`;
   const response = NextResponse.json({
     ok: true,
     recoveryCodes,

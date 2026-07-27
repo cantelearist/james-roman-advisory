@@ -13,6 +13,9 @@ export async function POST(
 ) {
   const context = await getAuthContext();
   if (!context) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (context.role !== "client") {
+    return NextResponse.json({ error: "Client payment access required" }, { status: 403 });
+  }
   const { id } = await params;
   await ensureEngagementOperationsTables();
   const sql = getDb();

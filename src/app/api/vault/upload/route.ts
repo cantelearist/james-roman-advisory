@@ -23,7 +23,7 @@ import {
   hasCapability,
 } from "@/lib/access-control";
 import { getAuthContext } from "@/lib/auth";
-import { ensureVaultTables, getDb, logFileAccess } from "@/lib/db";
+import { ensureEngagementOperationsTables, getDb, logFileAccess } from "@/lib/db";
 import {
   ALLOWED_MIME_TYPES,
   MAX_UPLOAD_BYTES,
@@ -32,6 +32,7 @@ import {
   vaultPathname,
 } from "@/lib/vault";
 import { notifyEngagementMembers } from "@/lib/notifications";
+import { triggerPortalAutomations } from "@/lib/automations";
 import type { ResourceAudience } from "@/lib/data-model";
 
 export const runtime = "nodejs";
@@ -44,12 +45,11 @@ export async function POST(request: Request) {
     if (!context) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    const { userId, user, role } = context;
+    const { userId, role } = context;
     const access = await getPortalAccessSummary(context);
     if (!hasCapability(access, "documents.upload")) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
-    const globalOperator = role === "super_admin" || (role === "admin" && access.scope === "global");
 
     // ── Parse multipart ──────────────────────────────────────────────────────
     const formData = await request.formData();
@@ -78,47 +78,31 @@ export async function POST(request: Request) {
     }
 
     // ── Resolve client record ────────────────────────────────────────────────
-    await ensureVaultTables();
+    await ensureEngagementOperationsTables();
     const sql = getDb();
 
-    let clientId: string;
-
-    if (matterId) {
-      const allowed = await authorizeCapability(
-        context,
-        access,
-        "documents.upload",
-        { matterId },
-      );
-      if (!allowed) {
-        return NextResponse.json({ error: "Matter not found" }, { status: 404 });
-      }
-      const matterRows = await sql`
-        SELECT client_id FROM matters WHERE id = ${matterId}
-      `;
-      if (matterRows.length === 0) {
-        return NextResponse.json({ error: "Matter not found" }, { status: 404 });
-      }
-      clientId = matterRows[0].client_id as string;
-    } else if (globalOperator) {
-      const staffClientId = formData.get("client_id") as string | null;
-      if (staffClientId) {
-        clientId = staffClientId;
-      } else {
-        const rows = await sql`
-          INSERT INTO clients (id, user_id, name, email)
-          VALUES (gen_random_uuid()::TEXT, ${userId}, ${user.name}, ${user.email})
-          ON CONFLICT (user_id) DO UPDATE SET name = EXCLUDED.name
-          RETURNING id
-        `;
-        clientId = rows[0].id as string;
-      }
-    } else {
+    if (!matterId) {
       return NextResponse.json(
         { error: "Select an engagement before uploading a document" },
         { status: 400 },
       );
     }
+    const allowed = await authorizeCapability(
+      context,
+      access,
+      "documents.upload",
+      { matterId },
+    );
+    if (!allowed) {
+      return NextResponse.json({ error: "Matter not found" }, { status: 404 });
+    }
+    const matterRows = await sql`
+      SELECT client_id FROM matters WHERE id = ${matterId}
+    `;
+    if (matterRows.length === 0) {
+      return NextResponse.json({ error: "Matter not found" }, { status: 404 });
+    }
+    const clientId = matterRows[0].client_id as string;
 
     // ── Build blob path ──────────────────────────────────────────────────────
     const docId = crypto.randomUUID();
@@ -139,9 +123,18 @@ export async function POST(request: Request) {
     // /api/vault/documents/[id].
     const docName = customName?.trim() || file.name;
     const canPublish = hasCapability(access, "documents.publish");
+    const settingsRows = canPublish && !requestedVisibility
+      ? await sql`SELECT value FROM portal_settings WHERE key = 'workspace' LIMIT 1`
+      : [];
+    const settings = settingsRows[0]?.value && typeof settingsRows[0].value === "object"
+      ? settingsRows[0].value as Record<string, unknown>
+      : {};
+    const configuredVisibility = ["internal", "contractor", "client"].includes(String(settings.defaultDocumentVisibility))
+      ? String(settings.defaultDocumentVisibility)
+      : null;
     const visibility: ResourceAudience =
-      canPublish && ["internal", "contractor", "client"].includes(requestedVisibility ?? "")
-        ? requestedVisibility as ResourceAudience
+      canPublish && ["internal", "contractor", "client"].includes(requestedVisibility ?? configuredVisibility ?? "")
+        ? (requestedVisibility ?? configuredVisibility) as ResourceAudience
         : role === "client"
           ? "client"
           : role === "contractor"
@@ -165,6 +158,17 @@ export async function POST(request: Request) {
       RETURNING id, name, original_name, category, size_bytes, content_type, created_at
     `;
     const document = rows[0];
+    await sql`
+      INSERT INTO document_versions (
+        id, document_id, version_number, blob_pathname, original_name,
+        size_bytes, content_type, uploaded_by
+      )
+      VALUES (
+        ${crypto.randomUUID()}, ${docId}, 1, ${blob.pathname}, ${file.name},
+        ${file.size}, ${file.type}, ${userId}
+      )
+      ON CONFLICT (document_id, version_number) DO NOTHING
+    `;
 
     // ── Audit log ────────────────────────────────────────────────────────────
     void logFileAccess({
@@ -185,6 +189,16 @@ export async function POST(request: Request) {
         preview: docName,
         path: `/portal/matters/${matterId}?section=documents`,
       });
+      if (publicationStatus === "pending_review") {
+        await triggerPortalAutomations({
+          triggerType: "document_review_requested",
+          matterId,
+          actorId: userId,
+          sourceId: docId,
+          title: `Review document for publication · ${docName}`,
+          detail: "Confirm the audience and publish or return the document.",
+        });
+      }
     }
 
     return NextResponse.json({ document }, { status: 201 });

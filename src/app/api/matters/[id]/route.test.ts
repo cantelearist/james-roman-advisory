@@ -8,14 +8,20 @@ const policyMocks = vi.hoisted(() => ({
 const authMocks = vi.hoisted(() => ({
   getAuthContext: vi.fn(),
 }));
+const dbMocks = vi.hoisted(() => ({
+  logMatterEvent: vi.fn(),
+}));
 
 vi.mock("@/lib/db", () => ({
-  ensureVaultTables: vi.fn().mockResolvedValue(undefined),
+  ensureEngagementOperationsTables: vi.fn().mockResolvedValue(undefined),
   getDb: vi.fn(() => sql),
-  logMatterEvent: vi.fn(),
+  logMatterEvent: dbMocks.logMatterEvent,
 }));
 vi.mock("@/lib/auth", () => ({
   getAuthContext: authMocks.getAuthContext,
+}));
+vi.mock("@/lib/automations", () => ({
+  triggerPortalAutomations: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock("@/lib/access-control", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/access-control")>();
@@ -26,7 +32,7 @@ vi.mock("@/lib/access-control", async (importOriginal) => {
   };
 });
 
-import { GET } from "./route";
+import { GET, PATCH } from "./route";
 
 describe("Client engagement-file filtering", () => {
   beforeEach(() => {
@@ -34,6 +40,7 @@ describe("Client engagement-file filtering", () => {
     authMocks.getAuthContext.mockReset();
     policyMocks.getPortalAccessSummary.mockReset();
     policyMocks.authorizeCapability.mockReset();
+    dbMocks.logMatterEvent.mockReset();
   });
 
   it("removes internal notes, events, and documents from a client response", async () => {
@@ -127,5 +134,112 @@ describe("Client engagement-file filtering", () => {
 
     expect(response.status).toBe(404);
     expect(sql).not.toHaveBeenCalled();
+  });
+});
+
+describe("Engagement workflow transition gates", () => {
+  beforeEach(() => {
+    sql.mockReset();
+    authMocks.getAuthContext.mockReset();
+    policyMocks.getPortalAccessSummary.mockReset();
+    policyMocks.authorizeCapability.mockReset();
+    dbMocks.logMatterEvent.mockReset();
+    authMocks.getAuthContext.mockResolvedValue({
+      userId: "admin-1",
+      role: "admin",
+      user: { id: "admin-1", name: "Admin", email: "admin@example.com", role: "admin" },
+    });
+    policyMocks.getPortalAccessSummary.mockResolvedValue({
+      role: "admin",
+      capabilities: ["engagements.view", "engagements.update"],
+      scope: "global",
+      permissionProfile: null,
+    });
+    policyMocks.authorizeCapability.mockResolvedValue(true);
+  });
+
+  it("refuses to advance when required persisted work remains unresolved", async () => {
+    sql
+      .mockResolvedValueOnce([{ id: "matter-1", status: "assessment", version: 3 }])
+      .mockResolvedValueOnce([{ value: { requireWorkflowGates: true } }])
+      .mockResolvedValueOnce([{ id: "item-1", title: "Publish assessment evidence", status: "pending" }]);
+
+    const response = await PATCH(
+      new Request("http://localhost/api/matters/matter-1", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "review", version: 3 }),
+      }),
+      { params: Promise.resolve({ id: "matter-1" }) },
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(body.blockers).toEqual([
+      { id: "item-1", title: "Publish assessment evidence", status: "pending" },
+    ]);
+    expect(body.overrideAvailable).toBe(false);
+    expect(sql).toHaveBeenCalledTimes(3);
+  });
+
+  it("allows a documented Super Admin override and records its reason", async () => {
+    authMocks.getAuthContext.mockResolvedValue({
+      userId: "super-1",
+      role: "super_admin",
+      user: { id: "super-1", name: "Super Admin", email: "super@example.com", role: "super_admin" },
+    });
+    policyMocks.getPortalAccessSummary.mockResolvedValue({
+      role: "super_admin",
+      capabilities: [],
+      scope: "global",
+      permissionProfile: null,
+    });
+    sql
+      .mockResolvedValueOnce([{ id: "matter-1", status: "assessment", version: 3 }])
+      .mockResolvedValueOnce([{ value: { requireWorkflowGates: true } }])
+      .mockResolvedValueOnce([{ id: "item-1", title: "Publish assessment evidence", status: "blocked" }])
+      .mockResolvedValueOnce([{ id: "matter-1", status: "review", version: 4 }]);
+
+    const response = await PATCH(
+      new Request("http://localhost/api/matters/matter-1", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: "review",
+          version: 3,
+          overrideReason: "Client directed an immediate review.",
+        }),
+      }),
+      { params: Promise.resolve({ id: "matter-1" }) },
+    );
+
+    expect(response.status).toBe(200);
+    expect(dbMocks.logMatterEvent).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: "workflow_override",
+      metadata: expect.objectContaining({
+        reason: "Client directed an immediate review.",
+        incompleteItemIds: ["item-1"],
+      }),
+    }));
+  });
+
+  it("rejects stale inline edits with an optimistic concurrency conflict", async () => {
+    sql
+      .mockResolvedValueOnce([{ id: "matter-1", status: "assessment", version: 4 }])
+      .mockResolvedValueOnce([{ value: { requireWorkflowGates: true } }])
+      .mockResolvedValueOnce([]);
+
+    const response = await PATCH(
+      new Request("http://localhost/api/matters/matter-1", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ priority: "urgent", version: 3 }),
+      }),
+      { params: Promise.resolve({ id: "matter-1" }) },
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(body.code).toBe("version_conflict");
   });
 });

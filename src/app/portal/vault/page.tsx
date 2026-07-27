@@ -1,539 +1,401 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import Link from "next/link";
 import {
-  ArrowLeft,
+  Archive,
   Download,
+  Eye,
   File,
-  FileImage,
-  FileLock2,
-  FileSpreadsheet,
+  FileClock,
   FileText,
-  ReceiptText,
-  Shield,
+  Filter,
+  FolderOpen,
+  History,
+  MoreHorizontal,
+  RefreshCw,
+  Search,
+  ShieldCheck,
+  Trash2,
   Upload,
   X,
 } from "lucide-react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
-import { Badge } from "@/components/ui/badge";
-import { BrandLogo } from "@/components/brand-logo";
 import { usePortalAccess } from "@/components/portal/access-provider";
-import { Progress } from "@/components/ui/progress";
+import { EmptyState, PageHeader } from "@/components/portal/portal-ui";
 
-// ─── Types ───────────────────────────────────────────────────────────────────
-
-type DocCategory =
-  | "lab_report"
-  | "inspection_report"
-  | "remediation_plan"
-  | "contractor_proposal"
-  | "insurance"
-  | "photo"
-  | "permit"
-  | "correspondence"
-  | "other";
-
-interface VaultDocument {
+type DocumentRecord = {
   id: string;
   name: string;
   original_name: string;
-  category: DocCategory;
+  category: string;
   size_bytes: number;
   content_type: string;
   matter_id: string | null;
   visibility?: "internal" | "contractor" | "client";
   publication_status?: "pending_review" | "published";
+  archived_at?: string | null;
   created_at: string;
-}
-
-interface EngagementOption {
-  id: string;
-  title: string;
-  client_name?: string;
-}
-
-// ─── Constants ───────────────────────────────────────────────────────────────
-
-const CATEGORY_LABELS: Record<DocCategory, string> = {
-  lab_report: "Lab Report",
-  inspection_report: "Inspection Report",
-  remediation_plan: "Remediation Plan",
-  contractor_proposal: "Contractor Proposal",
-  insurance: "Insurance",
-  photo: "Photo",
-  permit: "Permit",
-  correspondence: "Correspondence",
-  other: "Other",
+};
+type DocumentVersion = {
+  id: string; version_number: number; original_name: string; size_bytes: number;
+  content_type: string; uploaded_by_name?: string | null; created_at: string;
+};
+type AccessEvent = {
+  id: string; event_type: string; actor_name?: string | null; user_id: string; created_at: string;
 };
 
-const CATEGORY_OPTIONS: { value: DocCategory; label: string }[] = Object.entries(
-  CATEGORY_LABELS
-).map(([value, label]) => ({ value: value as DocCategory, label }));
+type Matter = { id: string; title: string; client_name?: string };
 
-function categoryIcon(category: DocCategory) {
-  if (category === "photo") return FileImage;
-  if (category === "lab_report" || category === "inspection_report") return FileText;
-  if (category === "contractor_proposal" || category === "insurance") return ReceiptText;
-  if (category === "correspondence") return File;
-  if (
-    category === "remediation_plan" ||
-    category === "permit"
-  )
-    return FileSpreadsheet;
-  return FileLock2;
+const CATEGORIES = [
+  "lab_report", "inspection_report", "remediation_plan", "contractor_proposal",
+  "insurance", "photo", "permit", "correspondence", "other",
+];
+
+function formatBytes(value: number): string {
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+  return `${(value / 1024 / 1024).toFixed(1)} MB`;
 }
 
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+function formatDate(value: string): string {
+  return new Date(value).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
-}
-
-// ─── Component ───────────────────────────────────────────────────────────────
-
-export default function VaultPage() {
+export default function DocumentsPage() {
   const { can } = usePortalAccess();
-  const [documents, setDocuments] = useState<VaultDocument[]>([]);
-  const [engagements, setEngagements] = useState<EngagementOption[]>([]);
-  const [selectedMatterId, setSelectedMatterId] = useState("");
+  const [documents, setDocuments] = useState<DocumentRecord[]>([]);
+  const [matters, setMatters] = useState<Matter[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filterCategory, setFilterCategory] = useState<DocCategory | "all">("all");
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [query, setQuery] = useState("");
+  const [category, setCategory] = useState("");
+  const [matterId, setMatterId] = useState("");
+  const [publication, setPublication] = useState("");
+  const [sort, setSort] = useState<"newest" | "oldest" | "name">("newest");
+  const [showArchived, setShowArchived] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [details, setDetails] = useState<DocumentRecord | null>(null);
+  const [previewUrl, setPreviewUrl] = useState("");
+  const [versions, setVersions] = useState<DocumentVersion[]>([]);
+  const [accessEvents, setAccessEvents] = useState<AccessEvent[]>([]);
+  const [showUpload, setShowUpload] = useState(false);
+  const [deleting, setDeleting] = useState<DocumentRecord | null>(null);
+  const [busy, setBusy] = useState("");
 
-  // Upload state
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [uploading, setUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
-  const [uploadCategory, setUploadCategory] = useState<DocCategory>("other");
-  const [uploadError, setUploadError] = useState<string | null>(null);
-  const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
-  const [dragOver, setDragOver] = useState(false);
-
-  // Download state
-  const [downloading, setDownloading] = useState<string | null>(null);
-
-  // ─── Fetch documents ───────────────────────────────────────────────────
-
-  const fetchDocuments = useCallback(async () => {
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError("");
     try {
-      setLoading(true);
       const [documentResponse, matterResponse] = await Promise.all([
-        fetch("/api/vault/documents"),
-        fetch("/api/matters"),
+        fetch(`/api/vault/documents${showArchived ? "?archived=1" : ""}`, { cache: "no-store" }),
+        fetch("/api/matters?limit=250", { cache: "no-store" }),
       ]);
-      if (!documentResponse.ok) throw new Error("Failed to load");
-      const [documentData, matterData] = await Promise.all([
-        documentResponse.json(),
-        matterResponse.ok ? matterResponse.json() : Promise.resolve({ matters: [] }),
-      ]);
+      const [documentData, matterData] = await Promise.all([documentResponse.json(), matterResponse.json()]);
+      if (!documentResponse.ok) throw new Error(documentData.error ?? "Documents could not be loaded.");
       setDocuments(documentData.documents ?? []);
-      const matterOptions = matterData.matters ?? [];
-      setEngagements(matterOptions);
-      setSelectedMatterId((current) => current || matterOptions[0]?.id || "");
-    } catch {
-      // silently handle — no docs shown
+      if (matterResponse.ok) setMatters(matterData.matters ?? []);
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "Documents could not be loaded.");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [showArchived]);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => {
-      void fetchDocuments();
-    }, 0);
-    return () => window.clearTimeout(timer);
-  }, [fetchDocuments]);
+    const timeout = window.setTimeout(() => void load(), 0);
+    return () => {
+      window.clearTimeout(timeout);
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+    };
+    // preview URL is revoked when the component unmounts or a new preview opens.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [load]);
 
-  // ─── Upload ────────────────────────────────────────────────────────────
+  const matterMap = useMemo(() => new Map(matters.map((matter) => [matter.id, matter])), [matters]);
+  const visible = useMemo(() => documents.filter((document) => {
+    if (query && !`${document.name} ${document.original_name}`.toLowerCase().includes(query.toLowerCase())) return false;
+    if (category && document.category !== category) return false;
+    if (matterId && document.matter_id !== matterId) return false;
+    if (publication && document.publication_status !== publication) return false;
+    return true;
+  }).sort((a, b) => sort === "name"
+    ? a.name.localeCompare(b.name)
+    : sort === "oldest"
+      ? new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+      : new Date(b.created_at).getTime() - new Date(a.created_at).getTime()), [category, documents, matterId, publication, query, sort]);
 
-  const uploadFile = useCallback(
-    async (file: File) => {
-      setUploading(true);
-      setUploadError(null);
-      setUploadSuccess(null);
-      setUploadProgress(10);
+  async function openDetails(document: DocumentRecord) {
+    setDetails(document);
+    setVersions([]);
+    setAccessEvents([]);
+    const response = await fetch(`/api/vault/documents/${document.id}/versions`, { cache: "no-store" });
+    if (!response.ok) return;
+    const data = await response.json();
+    setVersions(data.versions ?? []);
+    setAccessEvents(data.accessEvents ?? []);
+  }
 
-      try {
-        const formData = new FormData();
-        formData.append("file", file);
-        formData.append("category", uploadCategory);
-        if (selectedMatterId) formData.append("matter_id", selectedMatterId);
-
-        setUploadProgress(40);
-        const res = await fetch("/api/vault/upload", {
-          method: "POST",
-          body: formData,
-        });
-        setUploadProgress(80);
-
-        const data = await res.json();
-        if (!res.ok) {
-          setUploadError(data.error ?? "Upload failed");
-          return;
-        }
-
-        setUploadProgress(100);
-        setUploadSuccess(`"${file.name}" uploaded successfully.`);
-        await fetchDocuments();
-      } catch {
-        setUploadError("Upload failed. Please try again.");
-      } finally {
-        setUploading(false);
-        setTimeout(() => setUploadProgress(0), 1200);
-      }
-    },
-    [uploadCategory, fetchDocuments, selectedMatterId]
-  );
-
-  const handleFileChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (file) uploadFile(file);
-      e.target.value = "";
-    },
-    [uploadFile]
-  );
-
-  const handleDrop = useCallback(
-    (e: React.DragEvent) => {
-      e.preventDefault();
-      setDragOver(false);
-      const file = e.dataTransfer.files?.[0];
-      if (file) uploadFile(file);
-    },
-    [uploadFile]
-  );
-
-  // ─── Download ──────────────────────────────────────────────────────────
-
-  const downloadDocument = useCallback(async (doc: VaultDocument) => {
-    setDownloading(doc.id);
+  async function fetchDocument(document: DocumentRecord, preview = false) {
+    setBusy(document.id);
+    setError("");
     try {
-      const res = await fetch(`/api/vault/documents/${doc.id}`);
-      if (!res.ok) throw new Error("Download failed");
-      const blob = await res.blob();
+      const response = await fetch(`/api/vault/documents/${document.id}`);
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        throw new Error(data?.error ?? "Document could not be opened.");
+      }
+      const blob = await response.blob();
       const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = doc.original_name;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch {
-      // TODO: show error toast
+      if (preview) {
+        if (previewUrl) URL.revokeObjectURL(previewUrl);
+        setPreviewUrl(url);
+        await openDetails(document);
+      } else {
+        const anchor = window.document.createElement("a");
+        anchor.href = url;
+        anchor.download = document.original_name || document.name;
+        anchor.click();
+        window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
+      }
+    } catch (documentError) {
+      setError(documentError instanceof Error ? documentError.message : "Document could not be opened.");
     } finally {
-      setDownloading(null);
+      setBusy("");
     }
-  }, []);
+  }
 
-  const updateDocumentAudience = useCallback(async (
-    doc: VaultDocument,
-    visibility: "internal" | "contractor" | "client",
-  ) => {
-    const response = await fetch(`/api/vault/documents/${doc.id}`, {
+  async function updateDocument(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!details) return;
+    const form = new FormData(event.currentTarget);
+    setBusy(details.id);
+    const response = await fetch(`/api/vault/documents/${details.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ visibility, publicationStatus: "published" }),
+      body: JSON.stringify({
+        name: form.get("name"),
+        visibility: form.get("visibility"),
+        publicationStatus: form.get("publicationStatus"),
+      }),
     });
-    if (!response.ok) return;
-    await fetchDocuments();
-  }, [fetchDocuments]);
+    const data = await response.json();
+    if (!response.ok) setError(data.error ?? "Document controls could not be updated.");
+    else {
+      setDocuments((rows) => rows.map((row) => row.id === details.id ? { ...row, ...data.document } : row));
+      setDetails((current) => current ? { ...current, ...data.document } : current);
+      setSuccess("Document record updated.");
+    }
+    setBusy("");
+  }
 
-  // ─── Filter ────────────────────────────────────────────────────────────
+  async function uploadVersion(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!details) return;
+    setBusy(`version-${details.id}`);
+    const response = await fetch(`/api/vault/documents/${details.id}/versions`, {
+      method: "POST",
+      body: new FormData(event.currentTarget),
+    });
+    const data = await response.json();
+    if (!response.ok) setError(data.error ?? "The new version could not be uploaded.");
+    else {
+      setVersions((rows) => [data.version, ...rows]);
+      setSuccess(`Version ${data.version.version_number} uploaded and recorded.`);
+      await load();
+    }
+    setBusy("");
+  }
 
-  const filtered =
-    filterCategory === "all"
-      ? documents
-      : documents.filter((d) => d.category === filterCategory);
+  async function setArchived(document: DocumentRecord, archived: boolean) {
+    setBusy(document.id);
+    const response = await fetch(`/api/vault/documents/${document.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ archived }),
+    });
+    const data = await response.json();
+    if (!response.ok) setError(data.error ?? "Document archive state could not be updated.");
+    else {
+      setDetails(null);
+      setSuccess(archived ? "Document archived." : "Document restored.");
+      await load();
+    }
+    setBusy("");
+  }
 
-  // ─── Render ────────────────────────────────────────────────────────────
+  async function upload(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy("upload");
+    setError("");
+    const form = new FormData(event.currentTarget);
+    const response = await fetch("/api/vault/upload", { method: "POST", body: form });
+    const data = await response.json();
+    if (!response.ok) setError(data.error ?? "The document could not be uploaded.");
+    else {
+      setShowUpload(false);
+      setSuccess("Document uploaded and recorded.");
+      await load();
+    }
+    setBusy("");
+  }
+
+  async function removeDocument() {
+    if (!deleting) return;
+    setBusy(deleting.id);
+    const response = await fetch(`/api/vault/documents/${deleting.id}`, { method: "DELETE" });
+    const data = await response.json();
+    if (!response.ok) setError(data.error ?? "The document could not be deleted.");
+    else {
+      setDocuments((rows) => rows.filter((row) => row.id !== deleting.id));
+      setDeleting(null);
+      setDetails(null);
+      setSuccess("Document permanently deleted.");
+    }
+    setBusy("");
+  }
+
+  async function bulkDownload() {
+    for (const document of documents.filter((item) => selected.has(item.id))) {
+      await fetchDocument(document);
+    }
+    setSelected(new Set());
+  }
 
   return (
-    <main className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="border-b bg-background/95 backdrop-blur">
-        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-          <Link href="/" aria-label="James Roman Advisory home">
-            <BrandLogo priority className="h-9" />
-          </Link>
-          <div className="flex items-center gap-4">
-            <Badge
-              variant="secondary"
-              className="hidden gap-1.5 text-[0.6rem] uppercase tracking-widest sm:flex"
-            >
-              <Shield className="size-3" />
-              Secure vault
-            </Badge>
-            <Link
-              href="/portal"
-              className="flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
-            >
-              <ArrowLeft className="size-3.5" />
-              Portal
-            </Link>
-          </div>
-        </div>
-      </header>
+    <div className="portal-page">
+      <PageHeader
+        eyebrow="Secure record"
+        title="Documents"
+        description="Review, publish and retrieve engagement files through the authenticated vault."
+        actions={
+          <>
+            <button className="portal-secondary-button" onClick={load}><RefreshCw size={14} />Refresh</button>
+            {can("documents.upload") && <button className="portal-primary-button" onClick={() => setShowUpload(true)}><Upload size={15} />Upload document</button>}
+          </>
+        }
+      />
 
-      <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
-        {/* Page header */}
-        <div className="mb-10 border-b border-primary/15 pb-6">
-          <p className="mb-2 text-[0.64rem] uppercase tracking-[0.28em] text-muted-foreground">
-            Secure file room
-          </p>
-          <h1 className="font-heading text-3xl font-semibold sm:text-4xl">
-            Document Vault
-          </h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            All uploads are encrypted in transit. Access is logged. Documents are visible only to
-            authorized participants in the selected engagement.
-          </p>
-        </div>
+      <section className="portal-document-summary">
+        <div><FileText size={17} /><span><strong>{documents.length}</strong>Total files</span></div>
+        {can("documents.publish") && <div className={documents.some((document) => document.publication_status === "pending_review") ? "is-warning" : undefined}><FileClock size={17} /><span><strong>{documents.filter((document) => document.publication_status === "pending_review").length}</strong>Awaiting review</span></div>}
+        <div><ShieldCheck size={17} /><span><strong>{documents.filter((document) => document.visibility === "client" || document.visibility === undefined).length}</strong>Client visible</span></div>
+      </section>
 
-        <div className="grid gap-10 lg:grid-cols-[1fr_320px]">
-          {/* Left — document list */}
-          <div>
-            {/* Category filter */}
-            <div className="mb-6 flex flex-wrap gap-2">
-              <button
-                onClick={() => setFilterCategory("all")}
-                className={`rounded-full border px-3 py-1 text-xs transition-colors ${
-                  filterCategory === "all"
-                    ? "border-primary/50 bg-primary/10 text-foreground"
-                    : "border-border text-muted-foreground hover:border-primary/30"
-                }`}
-              >
-                All ({documents.length})
-              </button>
-              {CATEGORY_OPTIONS.filter((c) =>
-                documents.some((d) => d.category === c.value)
-              ).map((c) => (
-                <button
-                  key={c.value}
-                  onClick={() => setFilterCategory(c.value)}
-                  className={`rounded-full border px-3 py-1 text-xs transition-colors ${
-                    filterCategory === c.value
-                      ? "border-primary/50 bg-primary/10 text-foreground"
-                      : "border-border text-muted-foreground hover:border-primary/30"
-                  }`}
-                >
-                  {c.label} ({documents.filter((d) => d.category === c.value).length})
-                </button>
-              ))}
-            </div>
-
-            {/* Document rows */}
-            {loading ? (
-              <div className="space-y-3">
-                {[1, 2, 3].map((i) => (
-                  <div
-                    key={i}
-                    className="h-16 animate-pulse rounded-sm border border-primary/10 bg-card"
-                  />
-                ))}
-              </div>
-            ) : filtered.length === 0 ? (
-              <div className="flex flex-col items-center justify-center rounded-sm border border-dashed border-primary/20 py-16 text-center">
-                <FileLock2 className="mb-3 size-8 text-primary/30" />
-                <p className="text-sm font-medium text-foreground/60">No documents yet</p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {can("documents.upload")
-                    ? "Upload your first file using the panel on the right."
-                    : "No documents have been published to this workspace."}
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {filtered.map((doc) => {
-                  const Icon = categoryIcon(doc.category);
-                  return (
-                    <div
-                      key={doc.id}
-                      className="group flex items-center gap-4 rounded-sm border border-primary/10 bg-card px-4 py-3 transition-colors hover:border-primary/25"
-                    >
-                      <Icon className="size-5 shrink-0 text-primary/50" />
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium">{doc.name}</p>
-                        <p className="mt-0.5 text-[0.65rem] text-muted-foreground">
-                          {CATEGORY_LABELS[doc.category]} ·{" "}
-                          {formatBytes(doc.size_bytes)} ·{" "}
-                          {formatDate(doc.created_at)}
-                        </p>
-                      </div>
-                      {can("documents.publish") && doc.visibility && (
-                        <select
-                          aria-label={`Audience for ${doc.name}`}
-                          value={doc.visibility}
-                          onChange={(event) =>
-                            updateDocumentAudience(
-                              doc,
-                              event.target.value as "internal" | "contractor" | "client",
-                            )
-                          }
-                          className="shrink-0 border border-primary/15 bg-background px-2 py-1 text-[0.65rem] text-muted-foreground"
-                        >
-                          <option value="internal">Internal</option>
-                          <option value="contractor">Contractor</option>
-                          <option value="client">Client</option>
-                        </select>
-                      )}
-                      <button
-                        onClick={() => downloadDocument(doc)}
-                        disabled={downloading === doc.id}
-                        aria-label={`Download ${doc.name}`}
-                        className="shrink-0 rounded p-1.5 text-muted-foreground opacity-0 transition-all hover:bg-primary/10 hover:text-foreground group-hover:opacity-100 disabled:opacity-40"
-                      >
-                        <Download className="size-4" />
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-          {/* Right — upload panel */}
-          {can("documents.upload") && (
-          <div className="space-y-5">
-            <div className="rounded-sm border border-primary/15 bg-card p-5">
-              <p className="mb-4 text-[0.64rem] uppercase tracking-[0.28em] text-muted-foreground">
-                Upload document
-              </p>
-
-              <div className="mb-4">
-                <label
-                  htmlFor="engagement"
-                  className="mb-1.5 block text-xs text-muted-foreground"
-                >
-                  Engagement
-                </label>
-                <select
-                  id="engagement"
-                  value={selectedMatterId}
-                  onChange={(event) => setSelectedMatterId(event.target.value)}
-                  className="w-full rounded-sm border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary/40"
-                >
-                  <option value="">Select an engagement</option>
-                  {engagements.map((engagement) => (
-                    <option key={engagement.id} value={engagement.id}>
-                      {engagement.client_name
-                        ? `${engagement.client_name} — ${engagement.title}`
-                        : engagement.title}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Category selector */}
-              <div className="mb-4">
-                <label
-                  htmlFor="category"
-                  className="mb-1.5 block text-xs text-muted-foreground"
-                >
-                  Category
-                </label>
-                <select
-                  id="category"
-                  value={uploadCategory}
-                  onChange={(e) => setUploadCategory(e.target.value as DocCategory)}
-                  className="w-full rounded-sm border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary/40"
-                >
-                  {CATEGORY_OPTIONS.map((c) => (
-                    <option key={c.value} value={c.value}>
-                      {c.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Drop zone */}
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  setDragOver(true);
-                }}
-                onDragLeave={() => setDragOver(false)}
-                onDrop={handleDrop}
-                disabled={uploading || !selectedMatterId}
-                className={`flex w-full flex-col items-center justify-center gap-2 rounded-sm border border-dashed py-10 text-center transition-colors ${
-                  dragOver
-                    ? "border-primary/60 bg-primary/5"
-                    : "border-primary/20 hover:border-primary/40"
-                } disabled:opacity-50`}
-              >
-                <Upload className="size-6 text-primary/50" />
-                <p className="text-xs text-muted-foreground">
-                  {uploading ? "Uploading…" : "Click to browse or drag a file here"}
-                </p>
-                <p className="text-[0.6rem] text-muted-foreground/60">
-                  PDF, Word, Excel, images, text · max 50 MB
-                </p>
-              </button>
-
-              <input
-                ref={fileInputRef}
-                type="file"
-                className="hidden"
-                accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.webp,.heic,.txt,.csv"
-                onChange={handleFileChange}
-                disabled={uploading || !selectedMatterId}
-              />
-
-              {/* Upload progress */}
-              {uploading && uploadProgress > 0 && (
-                <div className="mt-3">
-                  <Progress value={uploadProgress} className="h-1" />
-                </div>
-              )}
-
-              {/* Feedback */}
-              {uploadError && (
-                <div className="mt-3 flex items-start gap-2 rounded-sm bg-destructive/10 px-3 py-2 text-xs text-destructive">
-                  <X className="mt-0.5 size-3.5 shrink-0" />
-                  {uploadError}
-                </div>
-              )}
-              {uploadSuccess && (
-                <div className="mt-3 rounded-sm bg-green-500/10 px-3 py-2 text-xs text-green-600 dark:text-green-400">
-                  {uploadSuccess}
-                </div>
-              )}
-            </div>
-
-            {/* Info card */}
-            <div className="rounded-sm border border-primary/10 bg-card/50 p-4">
-              <div className="space-y-2 text-[0.65rem] leading-relaxed text-muted-foreground">
-                <p className="flex items-center gap-1.5">
-                  <Shield className="size-3 shrink-0 text-primary/50" />
-                  Encrypted in transit via TLS
-                </p>
-                <p className="flex items-center gap-1.5">
-                  <Shield className="size-3 shrink-0 text-primary/50" />
-                  Every access is logged with timestamp
-                </p>
-                <p className="flex items-center gap-1.5">
-                  <Shield className="size-3 shrink-0 text-primary/50" />
-                  Visibility follows the engagement access policy
-                </p>
-                <p className="flex items-center gap-1.5">
-                  <Shield className="size-3 shrink-0 text-primary/50" />
-                  No third-party sharing without consent
-                </p>
-              </div>
-            </div>
-          </div>
-          )}
-        </div>
+      <div className="portal-board-toolbar">
+        <label className="portal-board-search"><Search size={15} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search document names" /></label>
+        <button className="portal-toolbar-button"><Filter size={14} />Filters</button>
+        {selected.size > 0 && <div className="portal-bulk-actions"><strong>{selected.size} selected</strong><button onClick={bulkDownload}><Download size={12} />Download</button><button onClick={() => setSelected(new Set())}><X size={12} />Clear</button></div>}
       </div>
-    </main>
+
+      <div className="portal-filter-bar portal-document-filters">
+        <label><span>Engagement</span><select value={matterId} onChange={(event) => setMatterId(event.target.value)}><option value="">All engagements</option>{matters.map((matter) => <option key={matter.id} value={matter.id}>{matter.title}</option>)}</select></label>
+        <label><span>Category</span><select value={category} onChange={(event) => setCategory(event.target.value)}><option value="">All categories</option>{CATEGORIES.map((item) => <option key={item} value={item}>{item.replaceAll("_", " ")}</option>)}</select></label>
+        {can("documents.publish") && <label><span>Publication</span><select value={publication} onChange={(event) => setPublication(event.target.value)}><option value="">All states</option><option value="pending_review">Pending review</option><option value="published">Published</option></select></label>}
+        {can("documents.publish") && <label className="portal-check-field"><input type="checkbox" checked={showArchived} onChange={(event) => setShowArchived(event.target.checked)} />Include archived</label>}
+        <label><span>Sort</span><select value={sort} onChange={(event) => setSort(event.target.value as typeof sort)}><option value="newest">Newest</option><option value="oldest">Oldest</option><option value="name">Name</option></select></label>
+        <button onClick={() => { setMatterId(""); setCategory(""); setPublication(""); setQuery(""); }}>Clear filters</button>
+      </div>
+
+      {error && <div className="portal-inline-error" role="alert"><span>{error}</span><button onClick={() => setError("")}><X size={14} /></button></div>}
+      {success && <div className="portal-inline-success" role="status"><span>{success}</span><button onClick={() => setSuccess("")}><X size={14} /></button></div>}
+
+      <section className="portal-card portal-document-table-wrap">
+        {loading ? (
+          <div className="portal-board-loading">{Array.from({ length: 8 }, (_, index) => <span key={index} />)}</div>
+        ) : visible.length === 0 ? (
+          <EmptyState icon={FolderOpen} title="No documents match this view" description={documents.length ? "Adjust or clear the current filters." : "Uploaded engagement documents will appear here."} />
+        ) : (
+          <div className="portal-document-table">
+            <div className="portal-document-row portal-document-header">
+              <span><input type="checkbox" aria-label="Select all documents" checked={selected.size === visible.length} onChange={(event) => setSelected(event.target.checked ? new Set(visible.map((document) => document.id)) : new Set())} /></span>
+              <span>Document</span><span>Engagement</span><span>Category</span><span>Audience</span><span>Status</span><span>Uploaded</span><span />
+            </div>
+            {visible.map((document) => (
+              <div className="portal-document-row" key={document.id}>
+                <span><input type="checkbox" aria-label={`Select ${document.name}`} checked={selected.has(document.id)} onChange={(event) => setSelected((current) => {
+                  const next = new Set(current); if (event.target.checked) next.add(document.id); else next.delete(document.id); return next;
+                })} /></span>
+                <button className="portal-document-name" onClick={() => fetchDocument(document, true)}><span><File size={15} /></span><div><strong>{document.name}</strong><small>{formatBytes(document.size_bytes)} · {document.original_name}</small></div></button>
+                <span>{document.matter_id ? matterMap.get(document.matter_id)?.title || "Engagement" : "Unassigned"}</span>
+                <span>{document.category.replaceAll("_", " ")}</span>
+                <span className={`portal-audience portal-audience-${document.visibility}`}>{document.visibility || "permitted"}</span>
+                <span className={`portal-publication portal-publication-${document.archived_at ? "archived" : document.publication_status}`}>{document.archived_at ? "archived" : document.publication_status?.replace("_", " ") || "available"}</span>
+                <time>{formatDate(document.created_at)}</time>
+                <span className="portal-document-actions"><button className="portal-icon-button" onClick={() => fetchDocument(document, true)} disabled={busy === document.id} aria-label={`Preview ${document.name}`}><Eye size={14} /></button><button className="portal-icon-button" onClick={() => fetchDocument(document)} disabled={busy === document.id} aria-label={`Download ${document.name}`}><Download size={14} /></button><button className="portal-icon-button" onClick={() => openDetails(document)} aria-label={`Details for ${document.name}`}><MoreHorizontal size={14} /></button></span>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {details && (
+        <div className="portal-drawer-overlay" role="dialog" aria-modal="true" aria-labelledby="document-details-title">
+          <button className="portal-command-scrim" onClick={() => { setDetails(null); if (previewUrl) { URL.revokeObjectURL(previewUrl); setPreviewUrl(""); } }} aria-label="Close details" />
+          <aside className="portal-drawer portal-document-drawer">
+            <header><div><p className="portal-eyebrow">Document record</p><h2 id="document-details-title">{details.name}</h2></div><button className="portal-icon-button" onClick={() => { setDetails(null); if (previewUrl) { URL.revokeObjectURL(previewUrl); setPreviewUrl(""); } }}><X size={18} /></button></header>
+            {previewUrl ? (
+              <div className="portal-document-preview">
+                {details.content_type === "application/pdf" || details.content_type?.startsWith("image/")
+                  ? <iframe src={previewUrl} title={`Preview ${details.name}`} />
+                  : <EmptyState icon={FileText} title="Preview unavailable" description="Download this file to open it in its native application." />}
+              </div>
+            ) : <button className="portal-preview-trigger" onClick={() => fetchDocument(details, true)}><Eye size={16} />Load secure preview</button>}
+            <dl className="portal-document-metadata">
+              <div><dt>Original name</dt><dd>{details.original_name}</dd></div>
+              <div><dt>Engagement</dt><dd>{details.matter_id ? matterMap.get(details.matter_id)?.title || "Engagement" : "Unassigned"}</dd></div>
+              <div><dt>Category</dt><dd>{details.category.replaceAll("_", " ")}</dd></div>
+              <div><dt>Size</dt><dd>{formatBytes(details.size_bytes)}</dd></div>
+              <div><dt>Uploaded</dt><dd>{formatDate(details.created_at)}</dd></div>
+            </dl>
+            {can("documents.publish") && (
+              <form onSubmit={updateDocument}>
+                <label className="portal-field"><span>Display name</span><input name="name" defaultValue={details.name} required maxLength={240} /></label>
+                <label className="portal-field"><span>Audience</span><select name="visibility" defaultValue={details.visibility || "internal"}><option value="internal">Internal only</option><option value="contractor">Contractor</option><option value="client">Client</option></select></label>
+                <label className="portal-field"><span>Publication</span><select name="publicationStatus" defaultValue={details.publication_status || "published"}><option value="pending_review">Pending review</option><option value="published">Published</option></select></label>
+                <footer><button type="button" className="portal-secondary-button" onClick={() => fetchDocument(details)}><Download size={14} />Download</button><button className="portal-primary-button" disabled={busy === details.id}>Save controls</button></footer>
+              </form>
+            )}
+            <section className="portal-document-versions">
+              <header><div><p className="portal-eyebrow">Version history</p><h3>{versions.length || 1} recorded version{versions.length === 1 ? "" : "s"}</h3></div><History size={15} /></header>
+              {can("documents.upload") && !details.archived_at && <form onSubmit={uploadVersion}><label className="portal-upload-version"><Upload size={14} /><span>Upload new version</span><input type="file" name="file" required /></label><button className="portal-secondary-button" disabled={busy === `version-${details.id}`}>{busy === `version-${details.id}` ? "Uploading…" : "Add version"}</button></form>}
+              <div>{versions.map((version) => <article key={version.id}><span>v{version.version_number}</span><div><strong>{version.original_name}</strong><small>{formatBytes(Number(version.size_bytes))} · {version.uploaded_by_name || "Authorized user"}</small></div><time>{formatDate(version.created_at)}</time></article>)}</div>
+            </section>
+            {accessEvents.length > 0 && <section className="portal-document-access-history"><header><p className="portal-eyebrow">Access history</p><h3>Recent activity</h3></header>{accessEvents.slice(0, 8).map((event) => <div key={event.id}><span>{event.event_type}</span><strong>{event.actor_name || "Authorized user"}</strong><time>{formatDate(event.created_at)}</time></div>)}</section>}
+            {can("documents.publish") && <button className="portal-secondary-button" onClick={() => setArchived(details, !details.archived_at)}><Archive size={14} />{details.archived_at ? "Restore document" : "Archive document"}</button>}
+            {can("documents.delete") && <button className="portal-danger-button" onClick={() => setDeleting(details)}><Trash2 size={14} />Permanently delete document</button>}
+          </aside>
+        </div>
+      )}
+
+      {showUpload && (
+        <div className="portal-dialog-overlay" role="dialog" aria-modal="true" aria-labelledby="upload-document-title">
+          <button className="portal-command-scrim" onClick={() => setShowUpload(false)} aria-label="Close upload" />
+          <section className="portal-dialog">
+            <header><div><p className="portal-eyebrow">Secure vault</p><h2 id="upload-document-title">Upload document</h2></div><button className="portal-icon-button" onClick={() => setShowUpload(false)}><X size={18} /></button></header>
+            <form onSubmit={upload}>
+              <label className="portal-upload-drop"><Upload size={22} /><strong>Select document</strong><span>PDF, images, Word or spreadsheet · 50 MB maximum</span><input type="file" name="file" required /></label>
+              <div className="portal-form-grid">
+                <label className="portal-field portal-field-wide"><span>Display name</span><input name="name" placeholder="Defaults to the original file name" /></label>
+                <label className="portal-field"><span>Engagement</span><select name="matter_id" required defaultValue={matterId}><option value="" disabled>Select engagement</option>{matters.map((matter) => <option key={matter.id} value={matter.id}>{matter.title}</option>)}</select></label>
+                <label className="portal-field"><span>Category</span><select name="category" defaultValue="other">{CATEGORIES.map((item) => <option key={item} value={item}>{item.replaceAll("_", " ")}</option>)}</select></label>
+                {can("documents.publish") && <label className="portal-field"><span>Audience</span><select name="visibility" defaultValue="internal"><option value="internal">Internal only</option><option value="contractor">Contractor</option><option value="client">Client</option></select></label>}
+              </div>
+              <footer><button type="button" className="portal-secondary-button" onClick={() => setShowUpload(false)}>Cancel</button><button className="portal-primary-button" disabled={busy === "upload"}>{busy === "upload" ? "Uploading…" : "Upload document"}</button></footer>
+            </form>
+          </section>
+        </div>
+      )}
+
+      {deleting && (
+        <div className="portal-dialog-overlay" role="alertdialog" aria-modal="true" aria-labelledby="delete-document-title">
+          <button className="portal-command-scrim" onClick={() => setDeleting(null)} aria-label="Close confirmation" />
+          <section className="portal-dialog portal-save-dialog">
+            <header><div><p className="portal-eyebrow">Permanent action</p><h2 id="delete-document-title">Delete document?</h2></div><button className="portal-icon-button" onClick={() => setDeleting(null)}><X size={18} /></button></header>
+            <form onSubmit={(event) => { event.preventDefault(); void removeDocument(); }}><p className="portal-dialog-copy">This removes “{deleting.name}” from storage and the engagement record. This action cannot be undone.</p><footer><button type="button" className="portal-secondary-button" onClick={() => setDeleting(null)}>Cancel</button><button className="portal-danger-button" disabled={busy === deleting.id}><Trash2 size={14} />Delete permanently</button></footer></form>
+          </section>
+        </div>
+      )}
+    </div>
   );
 }

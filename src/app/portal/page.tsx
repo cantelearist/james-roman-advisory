@@ -1,379 +1,313 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import {
+  AlertTriangle,
+  ArrowRight,
+  Bell,
+  BriefcaseBusiness,
+  CheckCircle2,
+  CheckSquare2,
+  CircleDollarSign,
+  FileClock,
+  RefreshCw,
+} from "lucide-react";
 import Link from "next/link";
-import { ArrowRight, FileText, Folder, Shield } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+
 import { usePortalAccess } from "@/components/portal/access-provider";
+import {
+  EmptyState,
+  HealthBadge,
+  PageHeader,
+  PriorityBadge,
+  StatusBadge,
+} from "@/components/portal/portal-ui";
 
-// ─── Design tokens ─────────────────────────────────────────────────────────────
-const GOLD  = "#c9b58a";
-const CREAM = "#ece6d6";
-const TITAN = "#b2a898";
-const BG    = "#0a0b0e";
-const CARD  = "#0d0f14";
-
-// ─── Types ─────────────────────────────────────────────────────────────────────
-type MatterStatus =
-  | "intake" | "assessment" | "review"
-  | "vendor_evaluation" | "oversight" | "clearance" | "closed";
-
-interface Matter {
+type SummaryMatter = {
   id: string;
   title: string;
-  type: string;
-  status: MatterStatus;
+  status: string;
+  priority: string;
+  health: string;
+  due_date?: string | null;
+  next_action?: string | null;
+  next_action_due_at?: string | null;
   client_name?: string;
   property_address?: string;
-  property_city?: string;
-  document_count: number;
+  owner_name?: string | null;
+  open_tasks: number;
   updated_at: string;
-}
-
-interface Document {
-  id: string;
-  name: string;
-  category: string;
-  size_bytes: number;
-  created_at: string;
-}
-
-// ─── Status display ─────────────────────────────────────────────────────────────
-const STATUS_CONFIG: Record<MatterStatus, { label: string; dot: string }> = {
-  intake:            { label: "Intake",            dot: "#8a8070" },
-  assessment:        { label: "Assessment",        dot: "#f59e0b" },
-  review:            { label: "Review",            dot: "#c9b58a" },
-  vendor_evaluation: { label: "Vendor Evaluation", dot: "#f97316" },
-  oversight:         { label: "Oversight",         dot: "#8b5cf6" },
-  clearance:         { label: "Clearance",         dot: "#4ade80" },
-  closed:            { label: "Closed",            dot: "#64748b" },
 };
 
-function StatusDot({ status }: { status: MatterStatus }) {
-  const cfg = STATUS_CONFIG[status] ?? { label: status, dot: TITAN };
-  return (
-    <span className="inline-flex items-center gap-1.5">
-      <span className="size-1.5 rounded-full" style={{ background: cfg.dot }} />
-      <span className="text-[0.7rem] uppercase tracking-[0.18em]" style={{ color: cfg.dot }}>
-        {cfg.label}
-      </span>
-    </span>
-  );
+type SummaryTask = {
+  id: string;
+  matter_id: string;
+  matter_title: string;
+  title: string;
+  status: string;
+  priority: string;
+  due_date?: string | null;
+  assignee_name?: string | null;
+};
+
+type Metrics = {
+  activeEngagements: number;
+  atRiskEngagements: number;
+  overdueTasks: number;
+  unreadNotifications: number;
+  pendingDocuments: number;
+  draftInvoices: number;
+  overdueInvoices: number;
+  outstandingCents: number;
+};
+
+type Summary = {
+  matters: SummaryMatter[];
+  tasks: SummaryTask[];
+  metrics: Metrics;
+};
+
+function dateLabel(value?: string | null): string {
+  if (!value) return "No date";
+  return new Date(value).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
-function fmt(date: string) {
-  return new Date(date).toLocaleDateString("en-US", {
-    month: "short", day: "numeric", year: "2-digit",
+function money(cents: number): string {
+  return (cents / 100).toLocaleString("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0,
   });
 }
 
-// ─── Main ───────────────────────────────────────────────────────────────────────
-export default function PortalPage() {
-  const { access, can } = usePortalAccess();
-  const [matters, setMatters]   = useState<Matter[]>([]);
-  const [documents, setDocuments] = useState<Document[]>([]);
-  const [loading, setLoading]   = useState(true);
-  const [error, setError]       = useState<string | null>(null);
+export default function PortalHomePage() {
+  const { user, access, can } = usePortalAccess();
+  const [summary, setSummary] = useState<Summary | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [now] = useState(() => Date.now());
 
-  useEffect(() => {
-    async function load() {
-      try {
-        const [mr, dr] = await Promise.all([
-          fetch("/api/matters").then((r) => r.json()),
-          fetch("/api/vault/documents").then((r) => r.json()),
-        ]);
-        setMatters(mr.matters ?? []);
-        setDocuments(dr.documents ?? []);
-      } catch {
-        setError("Failed to load your workspace. Please refresh.");
-      } finally {
-        setLoading(false);
-      }
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const response = await fetch("/api/portal/summary", { cache: "no-store" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error ?? "The workspace could not be loaded.");
+      setSummary(data);
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "The workspace could not be loaded.");
+    } finally {
+      setLoading(false);
     }
-    load();
   }, []);
 
-  const activeMatters = matters.filter((m) => m.status !== "closed");
-  const recentMatter  = matters[0] ?? null; // API returns most recent first
-  const recentDocs    = documents.slice(0, 4);
+  useEffect(() => {
+    const timeout = window.setTimeout(() => void load(), 0);
+    return () => window.clearTimeout(timeout);
+  }, [load]);
+
+  const attention = useMemo(
+    () => summary?.matters.filter((matter) =>
+      matter.health === "at_risk"
+      || matter.health === "blocked"
+      || (matter.due_date && new Date(matter.due_date).getTime() < now),
+    ).slice(0, 6) ?? [],
+    [now, summary],
+  );
+
+  if (loading) {
+    return (
+      <div className="portal-page">
+        <PageHeader eyebrow="Command center" title={`Good ${new Date().getHours() < 12 ? "morning" : "afternoon"}, ${user.name.split(" ")[0]}`} />
+        <div className="portal-skeleton-grid" aria-label="Loading workspace">
+          {Array.from({ length: 8 }, (_, index) => <span key={index} />)}
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !summary) {
+    return (
+      <div className="portal-page">
+        <PageHeader eyebrow="Command center" title="Workspace unavailable" />
+        <div className="portal-error-state" role="alert">
+          <AlertTriangle size={20} />
+          <div><strong>We could not load current operations.</strong><p>{error}</p></div>
+          <button className="portal-secondary-button" onClick={load}><RefreshCw size={14} />Retry</button>
+        </div>
+      </div>
+    );
+  }
+
+  const metricCards = [
+    {
+      label: "Active engagements",
+      value: summary.metrics.activeEngagements,
+      detail: `${summary.metrics.atRiskEngagements} require attention`,
+      href: "/portal/matters",
+      icon: BriefcaseBusiness,
+      tone: summary.metrics.atRiskEngagements > 0 ? "warning" : "neutral",
+      show: can("engagements.view"),
+    },
+    {
+      label: "Overdue work",
+      value: summary.metrics.overdueTasks,
+      detail: `${summary.tasks.length} open assignments`,
+      href: "/portal/work?filter=overdue",
+      icon: CheckSquare2,
+      tone: summary.metrics.overdueTasks > 0 ? "critical" : "neutral",
+      show: can("timeline.view"),
+    },
+    {
+      label: "Unread activity",
+      value: summary.metrics.unreadNotifications,
+      detail: "Messages and record changes",
+      href: "/portal/inbox",
+      icon: Bell,
+      tone: summary.metrics.unreadNotifications > 0 ? "accent" : "neutral",
+      show: can("messages.view"),
+    },
+    {
+      label: "Document review",
+      value: summary.metrics.pendingDocuments,
+      detail: "Awaiting publication",
+      href: "/portal/vault?status=pending_review",
+      icon: FileClock,
+      tone: summary.metrics.pendingDocuments > 0 ? "warning" : "neutral",
+      show: can("documents.publish"),
+    },
+    {
+      label: "Outstanding",
+      value: money(summary.metrics.outstandingCents),
+      detail: `${summary.metrics.overdueInvoices} overdue invoices`,
+      href: "/portal/finance?status=outstanding",
+      icon: CircleDollarSign,
+      tone: summary.metrics.overdueInvoices > 0 ? "critical" : "neutral",
+      show: can("finance.view"),
+    },
+  ].filter((card) => card.show);
 
   return (
-    <div className="min-h-screen" style={{ background: BG, color: CREAM }}>
+    <div className="portal-page">
+      <PageHeader
+        eyebrow="Command center"
+        title={`${access.role === "client" ? "Your Private Office" : "Operations overview"}`}
+        description={access.role === "client"
+          ? "Your engagements, documents and correspondence in one confidential record."
+          : `Current priorities and exceptions across the advisory practice. Updated ${new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}.`}
+        actions={<button className="portal-secondary-button" onClick={load}><RefreshCw size={14} />Refresh</button>}
+      />
 
-      {/* ── Nav ─────────────────────────────────────────────────────────── */}
-      <header
-        className="px-8 py-5 flex items-center justify-between border-b"
-        style={{
-          borderColor: "rgba(201,181,138,0.1)",
-          background: "rgba(10,11,14,0.9)",
-          backdropFilter: "blur(8px)",
-        }}
-      >
-        <span
-          className="text-[0.72rem] uppercase tracking-[0.28em]"
-          style={{ color: GOLD, opacity: 0.8 }}
-        >
-          Private Office
-        </span>
-        <nav className="flex items-center gap-5">
-          {can("engagements.view") && (
-            <Link
-              href="/portal/matters"
-              className="text-[0.68rem] uppercase tracking-[0.18em] opacity-40 hover:opacity-80 transition-opacity"
-              style={{ color: TITAN }}
-            >
-              Engagements
+      <section className="portal-metric-grid" aria-label="Operational metrics">
+        {metricCards.map((card) => {
+          const Icon = card.icon;
+          return (
+            <Link key={card.label} href={card.href} className={`portal-metric-card portal-metric-${card.tone}`}>
+              <span className="portal-metric-icon"><Icon size={17} /></span>
+              <div>
+                <p>{card.label}</p>
+                <strong>{card.value}</strong>
+                <span>{card.detail}</span>
+              </div>
+              <ArrowRight size={14} />
             </Link>
-          )}
-          {can("documents.view") && (
-            <Link
-              href="/portal/vault"
-              className="text-[0.68rem] uppercase tracking-[0.18em] opacity-40 hover:opacity-80 transition-opacity"
-              style={{ color: TITAN }}
-            >
-              Vault
-            </Link>
-          )}
-          {can("finance.view") && (
-            <Link
-              href="/portal/finance"
-              className="text-[0.68rem] uppercase tracking-[0.18em] opacity-40 hover:opacity-80 transition-opacity"
-              style={{ color: TITAN }}
-            >
-              Finance
-            </Link>
-          )}
-          {(can("users.invite") || can("access.manage")) && (
-            <Link
-              href="/portal/admin"
-              className="flex items-center gap-1 text-[0.68rem] uppercase tracking-[0.16em] opacity-30 hover:opacity-60 transition-opacity"
-              style={{ color: TITAN }}
-            >
-              <Shield size={10} />
-              {access.role === "super_admin" ? "Super Admin" : "Admin"}
-            </Link>
-          )}
-        </nav>
-      </header>
+          );
+        })}
+      </section>
 
-      <div className="px-8 py-12 max-w-5xl mx-auto">
-
-        {loading ? (
-          <div
-            className="py-32 text-center text-[0.8rem] uppercase tracking-[0.22em]"
-            style={{ color: TITAN, opacity: 0.35 }}
-          >
-            Loading…
-          </div>
-        ) : error ? (
-          <div
-            className="py-32 text-center text-[0.8rem]"
-            style={{ color: "#f87171" }}
-          >
-            {error}
-          </div>
-        ) : (
-          <>
-            {/* ── Summary stats ─────────────────────────────────────────── */}
-            <div className="grid grid-cols-3 gap-4 mb-12">
-              {[
-                {
-                  label: "Active engagements",
-                  value: activeMatters.length,
-                  accent: activeMatters.length > 0,
-                  href: "/portal/matters",
-                },
-                {
-                  label: "Documents in vault",
-                  value: documents.length,
-                  accent: false,
-                  href: "/portal/vault",
-                },
-                {
-                  label: "Total engagements",
-                  value: matters.length,
-                  accent: false,
-                  href: "/portal/matters",
-                },
-              ].map(({ label, value, accent, href }) => (
-                <Link
-                  key={label}
-                  href={href}
-                  className="block border p-6 hover:opacity-80 transition-opacity"
-                  style={{ borderColor: "rgba(201,181,138,0.1)", background: CARD }}
-                >
-                  <p
-                    className="font-heading font-light text-[2.4rem] leading-none mb-1"
-                    style={{ color: accent ? GOLD : CREAM }}
-                  >
-                    {value}
-                  </p>
-                  <p
-                    className="text-[0.68rem] uppercase tracking-[0.22em]"
-                    style={{ color: TITAN, opacity: 0.5 }}
-                  >
-                    {label}
-                  </p>
+      <div className="portal-dashboard-grid">
+        <section className="portal-card portal-dashboard-panel">
+          <header className="portal-panel-header">
+            <div><p className="portal-eyebrow">Priority queue</p><h2>My work</h2></div>
+            <Link href="/portal/work">View all <ArrowRight size={13} /></Link>
+          </header>
+          {summary.tasks.length === 0 ? (
+            <EmptyState
+              icon={CheckCircle2}
+              title="No open assignments"
+              description="Assigned tasks and due dates will appear here."
+            />
+          ) : (
+            <div className="portal-task-list">
+              {summary.tasks.slice(0, 7).map((task) => (
+                <Link href={`/portal/matters/${task.matter_id}?section=work`} key={task.id}>
+                  <span className={`portal-task-check portal-task-${task.status}`} />
+                  <div>
+                    <strong>{task.title}</strong>
+                    <span>{task.matter_title}</span>
+                  </div>
+                  <PriorityBadge priority={task.priority} />
+                  <time className={task.due_date && new Date(task.due_date).getTime() < now ? "is-overdue" : undefined}>
+                    {dateLabel(task.due_date)}
+                  </time>
                 </Link>
               ))}
             </div>
+          )}
+        </section>
 
-            {/* ── Empty state ────────────────────────────────────────────── */}
-            {matters.length === 0 && (
-              <div
-                className="border p-12 text-center mb-10"
-                style={{ borderColor: "rgba(201,181,138,0.08)", background: CARD }}
-              >
-                <Folder
-                  size={28}
-                  className="mx-auto mb-4 opacity-20"
-                  style={{ color: GOLD }}
-                />
-                <p
-                  className="text-[0.84rem] mb-2"
-                  style={{ color: CREAM, opacity: 0.6 }}
-                >
-                  No engagements yet.
-                </p>
-                <p
-                  className="text-[0.76rem]"
-                  style={{ color: TITAN, opacity: 0.4 }}
-                >
-                  Your advisor will open your first engagement here.
-                </p>
-              </div>
-            )}
-
-            {/* ── Active engagement ──────────────────────────────────────── */}
-            {recentMatter && (
-              <div className="mb-10">
-                <p
-                  className="text-[0.62rem] uppercase tracking-[0.34em] mb-4"
-                  style={{ color: GOLD, opacity: 0.6 }}
-                >
-                  Most recent engagement
-                </p>
-                <Link
-                  href={`/portal/matters/${recentMatter.id}`}
-                  className="block border p-6 hover:opacity-80 transition-opacity group"
-                  style={{ borderColor: "rgba(201,181,138,0.12)", background: CARD }}
-                >
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1 min-w-0">
-                      <p
-                        className="text-[1rem] font-light mb-1 truncate"
-                        style={{ color: CREAM }}
-                      >
-                        {recentMatter.title}
-                      </p>
-                      {recentMatter.property_address && (
-                        <p
-                          className="text-[0.76rem] mb-3 truncate"
-                          style={{ color: TITAN, opacity: 0.55 }}
-                        >
-                          {recentMatter.property_address}, {recentMatter.property_city}
-                        </p>
-                      )}
-                      <StatusDot status={recentMatter.status} />
-                    </div>
-                    <div className="text-right shrink-0">
-                      <p
-                        className="text-[0.7rem] mb-1"
-                        style={{ color: TITAN, opacity: 0.4 }}
-                      >
-                        Updated {fmt(recentMatter.updated_at)}
-                      </p>
-                      {recentMatter.document_count > 0 && (
-                        <div className="flex items-center justify-end gap-1">
-                          <FileText
-                            size={10}
-                            style={{ color: GOLD, opacity: 0.5 }}
-                          />
-                          <p
-                            className="text-[0.68rem]"
-                            style={{ color: TITAN, opacity: 0.4 }}
-                          >
-                            {recentMatter.document_count} doc
-                            {recentMatter.document_count !== 1 ? "s" : ""}
-                          </p>
-                        </div>
-                      )}
-                      <ArrowRight
-                        size={14}
-                        className="mt-2 ml-auto opacity-20 group-hover:opacity-60 transition-opacity"
-                        style={{ color: CREAM }}
-                      />
-                    </div>
+        <section className="portal-card portal-dashboard-panel">
+          <header className="portal-panel-header">
+            <div><p className="portal-eyebrow">Exceptions</p><h2>Requires attention</h2></div>
+            <Link href="/portal/matters?view=attention">Open view <ArrowRight size={13} /></Link>
+          </header>
+          {attention.length === 0 ? (
+            <EmptyState
+              icon={CheckCircle2}
+              title="No current exceptions"
+              description="At-risk, blocked and overdue engagements will be surfaced here."
+            />
+          ) : (
+            <div className="portal-attention-list">
+              {attention.map((matter) => (
+                <Link href={`/portal/matters/${matter.id}`} key={matter.id}>
+                  <div>
+                    <strong>{matter.title}</strong>
+                    <span>{matter.client_name}{matter.owner_name ? ` · ${matter.owner_name}` : ""}</span>
                   </div>
+                  <HealthBadge health={matter.health} />
+                  <span className="portal-attention-action">{matter.next_action || "Review engagement"}</span>
+                  <ArrowRight size={14} />
                 </Link>
-
-                {matters.length > 1 && (
-                  <Link
-                    href="/portal/matters"
-                    className="mt-3 flex items-center gap-1.5 text-[0.72rem] uppercase tracking-[0.2em] opacity-40 hover:opacity-80 transition-opacity"
-                    style={{ color: GOLD }}
-                  >
-                    View all {matters.length} engagements <ArrowRight size={11} />
-                  </Link>
-                )}
-              </div>
-            )}
-
-            {/* ── Recent documents ───────────────────────────────────────── */}
-            {recentDocs.length > 0 && (
-              <div>
-                <p
-                  className="text-[0.62rem] uppercase tracking-[0.34em] mb-4"
-                  style={{ color: GOLD, opacity: 0.6 }}
-                >
-                  Recent documents
-                </p>
-                <div
-                  className="border overflow-hidden"
-                  style={{ borderColor: "rgba(201,181,138,0.1)" }}
-                >
-                  {recentDocs.map((doc, i) => (
-                    <div
-                      key={doc.id}
-                      className="flex items-center gap-4 px-5 py-3.5 border-b last:border-b-0"
-                      style={{
-                        borderColor: "rgba(201,181,138,0.07)",
-                        background: i % 2 === 0 ? CARD : "transparent",
-                      }}
-                    >
-                      <FileText
-                        size={13}
-                        style={{ color: GOLD, opacity: 0.45 }}
-                        className="shrink-0"
-                      />
-                      <p
-                        className="flex-1 text-[0.82rem] truncate"
-                        style={{ color: CREAM, opacity: 0.8 }}
-                      >
-                        {doc.name}
-                      </p>
-                      <p
-                        className="text-[0.68rem] shrink-0"
-                        style={{ color: TITAN, opacity: 0.35 }}
-                      >
-                        {fmt(doc.created_at)}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-                {documents.length > 4 && (
-                  <Link
-                    href="/portal/vault"
-                    className="mt-3 flex items-center gap-1.5 text-[0.72rem] uppercase tracking-[0.2em] opacity-40 hover:opacity-80 transition-opacity"
-                    style={{ color: GOLD }}
-                  >
-                    View all {documents.length} documents <ArrowRight size={11} />
-                  </Link>
-                )}
-              </div>
-            )}
-          </>
-        )}
+              ))}
+            </div>
+          )}
+        </section>
       </div>
+
+      <section className="portal-card portal-dashboard-panel portal-recent-engagements">
+        <header className="portal-panel-header">
+          <div><p className="portal-eyebrow">Portfolio</p><h2>Recent engagements</h2></div>
+          <Link href="/portal/matters">All engagements <ArrowRight size={13} /></Link>
+        </header>
+        {summary.matters.length === 0 ? (
+          <EmptyState
+            icon={BriefcaseBusiness}
+            title="No engagements"
+            description={can("engagements.create")
+              ? "Create the first engagement to establish its secure operating record."
+              : "No engagement has been assigned to your account."}
+            action={can("engagements.create") ? { href: "/portal/matters?new=1", label: "Create engagement" } : undefined}
+          />
+        ) : (
+          <div className="portal-data-table portal-dashboard-table">
+            <div className="portal-data-row portal-data-header">
+              <span>Engagement</span><span>Stage</span><span>Health</span><span>Owner</span><span>Open work</span><span>Last activity</span>
+            </div>
+            {summary.matters.slice(0, 8).map((matter) => (
+              <Link className="portal-data-row" href={`/portal/matters/${matter.id}`} key={matter.id}>
+                <span><strong>{matter.title}</strong><small>{matter.client_name}{matter.property_address ? ` · ${matter.property_address}` : ""}</small></span>
+                <span><StatusBadge status={matter.status} /></span>
+                <span><HealthBadge health={matter.health} /></span>
+                <span>{matter.owner_name || "Unassigned"}</span>
+                <span>{matter.open_tasks}</span>
+                <span>{dateLabel(matter.updated_at)}</span>
+              </Link>
+            ))}
+          </div>
+        )}
+      </section>
     </div>
   );
 }

@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/portal-automations",
+      "schedule": "15 15 * * *"
+    }
+  ]
+}
