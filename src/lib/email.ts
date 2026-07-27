@@ -154,7 +154,10 @@ export async function sendPasswordRecovery(data: {
     console.warn("email.skipped", "RESEND_API_KEY not set — password recovery not sent");
     return;
   }
-  const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.jamesroman.la").replace(/\/$/, "");
+  const siteUrl = (
+    process.env.NEXT_PUBLIC_SITE_URL ??
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "https://www.jamesroman.la")
+  ).replace(/\/$/, "");
   const recoveryUrl = `${siteUrl}/reset-password?token=${encodeURIComponent(data.token)}`;
   const resend = new Resend(process.env.RESEND_API_KEY);
   const { error } = await resend.emails.send({

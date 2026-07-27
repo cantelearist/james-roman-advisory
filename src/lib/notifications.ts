@@ -51,7 +51,10 @@ export async function notifyEngagementMembers(options: {
   if (recipients.length === 0) return { sent: 0, failed: 0 };
 
   const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
-  const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.jamesroman.la").replace(/\/$/, "");
+  const siteUrl = (
+    process.env.NEXT_PUBLIC_SITE_URL ??
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "https://www.jamesroman.la")
+  ).replace(/\/$/, "");
   let sent = 0;
   let failed = 0;
   for (const recipient of recipients) {
