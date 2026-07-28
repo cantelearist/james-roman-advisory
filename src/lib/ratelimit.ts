@@ -1,11 +1,9 @@
 /**
  * Rate limiting utility — wraps @upstash/ratelimit + @upstash/redis.
  *
- * Fails open: if UPSTASH_REDIS_REST_URL or UPSTASH_REDIS_REST_TOKEN are not
- * configured, rate limiting is silently skipped and all requests are allowed.
- * This means you can deploy the code before adding Upstash credentials —
- * just set the env vars in Vercel when ready and rate limiting activates
- * without any code change.
+ * Returns an explicit unavailable result if Upstash is not configured or
+ * cannot be reached. Sensitive callers must fail closed with 503 rather than
+ * silently admitting an unthrottled request.
  *
  * Usage:
  *   const result = await ratelimit("consultation", identifier);
@@ -17,7 +15,13 @@
 import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
 
-type LimitResult = { blocked: boolean; remaining: number; reset: number } | null;
+export type LimitResult = {
+  available: boolean;
+  blocked: boolean;
+  remaining: number | null;
+  reset: number | null;
+  reason?: "not_configured" | "provider_error" | "unknown_limiter";
+};
 
 // One Redis client per runtime process (edge / node)
 let redis: Redis | null = null;
@@ -35,6 +39,8 @@ function getRedis(): Redis | null {
 const LIMITERS: Record<string, { requests: number; window: `${number} s` | `${number} m` | `${number} h` }> = {
   // Public consultation form — 5 submissions per hour per IP
   consultation: { requests: 5, window: "1 h" },
+  "auth-login": { requests: 10, window: "15 m" },
+  "auth-register": { requests: 5, window: "1 h" },
   // Admin invite — 20 invites per hour per user
   invite: { requests: 20, window: "1 h" },
   // Seed endpoint — 10 calls per hour per IP (defense-in-depth; SEED_KEY is the primary gate)
@@ -70,19 +76,40 @@ function getLimiter(name: string): Ratelimit | null {
  *
  * @param name       Key from LIMITERS config (e.g., "consultation")
  * @param identifier IP address or user ID — used as the rate limit bucket key
- * @returns          null if Upstash is not configured (allow);
- *                   { blocked, remaining, reset } otherwise
+ * @returns          An explicit allowed, blocked, or unavailable result.
  */
 export async function ratelimit(name: string, identifier: string): Promise<LimitResult> {
+  if (!LIMITERS[name]) {
+    return {
+      available: false,
+      blocked: true,
+      remaining: null,
+      reset: null,
+      reason: "unknown_limiter",
+    };
+  }
   try {
     const limiter = getLimiter(name);
-    if (!limiter) return null; // Upstash not configured — fail open
+    if (!limiter) {
+      return {
+        available: false,
+        blocked: true,
+        remaining: null,
+        reset: null,
+        reason: "not_configured",
+      };
+    }
 
     const { success, remaining, reset } = await limiter.limit(identifier);
-    return { blocked: !success, remaining, reset };
+    return { available: true, blocked: !success, remaining, reset };
   } catch {
-    // Never let rate limiting crash an endpoint
-    return null;
+    return {
+      available: false,
+      blocked: true,
+      remaining: null,
+      reset: null,
+      reason: "provider_error",
+    };
   }
 }
 

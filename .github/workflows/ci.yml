@@ -25,7 +25,8 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
   e2e:
-    name: E2E user journeys
+    name: Read-only production smoke
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     needs: unit
     steps:
@@ -41,8 +42,8 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install chromium --with-deps
 
-      - name: Run E2E tests against production
-        run: npx playwright test --project=chromium
+      - name: Run read-only smoke tests against production
+        run: npx playwright test .qa/production-smoke.spec.ts --project=chromium
         env:
           PLAYWRIGHT_BASE_URL: https://www.jamesroman.la
 

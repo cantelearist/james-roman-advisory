@@ -4,7 +4,7 @@ import { z } from "zod";
 import {
   ADMIN_PROFILE_CAPABILITIES,
   CONTRACTOR_PROFILE_CAPABILITIES,
-  logAccessAudit,
+  accessAuditQuery,
   profileCapabilityCeiling,
 } from "@/lib/access-control";
 import { getAuthContext, isSuperAdmin } from "@/lib/auth";
@@ -190,33 +190,36 @@ export async function POST(request: Request): Promise<NextResponse> {
       (capability): capability is Capability => ceiling.includes(capability),
     );
     const id = `profile_${crypto.randomUUID()}`;
-    const [profile] = await sql`
-      INSERT INTO permission_profiles (
-        id,
-        name,
-        role_type,
-        permissions,
-        created_by
-      )
-      VALUES (
-        ${id},
-        ${input.name},
-        ${input.roleType},
-        CAST(${JSON.stringify(permissions)} AS JSONB),
-        ${auth.context.userId}
-      )
-      RETURNING
-        id,
-        name,
-        role_type AS "roleType",
-        permissions,
-        is_system AS "isSystem"
-    `;
-    await logAccessAudit({
-      actorId: auth.context.userId,
-      action: "permission_profile.created",
-      metadata: { profileId: id, roleType: input.roleType, permissions },
-    });
+    const [profileRows] = await sql.transaction((tx) => [
+      tx`
+        INSERT INTO permission_profiles (
+          id,
+          name,
+          role_type,
+          permissions,
+          created_by
+        )
+        VALUES (
+          ${id},
+          ${input.name},
+          ${input.roleType},
+          CAST(${JSON.stringify(permissions)} AS JSONB),
+          ${auth.context.userId}
+        )
+        RETURNING
+          id,
+          name,
+          role_type AS "roleType",
+          permissions,
+          is_system AS "isSystem"
+      `,
+      accessAuditQuery(tx, {
+        actorId: auth.context.userId,
+        action: "permission_profile.created",
+        metadata: { profileId: id, roleType: input.roleType, permissions },
+      }),
+    ]);
+    const profile = profileRows[0];
     return NextResponse.json({ profile }, { status: 201 });
   }
 
@@ -236,19 +239,21 @@ export async function POST(request: Request): Promise<NextResponse> {
     const permissions = [...new Set(input.permissions)].filter(
       (capability): capability is Capability => ceiling.includes(capability),
     );
-    const rows = await sql`
-      UPDATE permission_profiles
-      SET name = ${input.name},
-          permissions = CAST(${JSON.stringify(permissions)} AS JSONB),
-          updated_at = NOW()
-      WHERE id = ${input.profileId}
-      RETURNING id, name, role_type AS "roleType", permissions, is_system AS "isSystem", status
-    `;
-    await logAccessAudit({
-      actorId: auth.context.userId,
-      action: "permission_profile.updated",
-      metadata: { profileId: input.profileId, permissions },
-    });
+    const [rows] = await sql.transaction((tx) => [
+      tx`
+        UPDATE permission_profiles
+        SET name = ${input.name},
+            permissions = CAST(${JSON.stringify(permissions)} AS JSONB),
+            updated_at = NOW()
+        WHERE id = ${input.profileId}
+        RETURNING id, name, role_type AS "roleType", permissions, is_system AS "isSystem", status
+      `,
+      accessAuditQuery(tx, {
+        actorId: auth.context.userId,
+        action: "permission_profile.updated",
+        metadata: { profileId: input.profileId, permissions },
+      }),
+    ]);
     return NextResponse.json({ profile: rows[0] });
   }
 
@@ -275,16 +280,18 @@ export async function POST(request: Request): Promise<NextResponse> {
         assignedUsers: Number(assignments[0]?.count ?? 0),
       }, { status: 409 });
     }
-    await sql`
-      UPDATE permission_profiles
-      SET status = 'archived', updated_at = NOW()
-      WHERE id = ${input.profileId}
-    `;
-    await logAccessAudit({
-      actorId: auth.context.userId,
-      action: "permission_profile.archived",
-      metadata: { profileId: input.profileId },
-    });
+    await sql.transaction((tx) => [
+      tx`
+        UPDATE permission_profiles
+        SET status = 'archived', updated_at = NOW()
+        WHERE id = ${input.profileId}
+      `,
+      accessAuditQuery(tx, {
+        actorId: auth.context.userId,
+        action: "permission_profile.archived",
+        metadata: { profileId: input.profileId },
+      }),
+    ]);
     return NextResponse.json({ archived: true });
   }
 
@@ -319,50 +326,53 @@ export async function POST(request: Request): Promise<NextResponse> {
       }
     }
 
-    await sql`
-      UPDATE users
-      SET role = ${input.role}, status = ${input.status}
-      WHERE id = ${input.userId}
-    `;
-    if (profileId) {
-      await sql`
-        INSERT INTO user_permission_assignments (
-          user_id,
-          permission_profile_id,
-          access_scope,
-          assigned_by
-        )
-        VALUES (
-          ${input.userId},
-          ${profileId},
-          ${effectiveScope},
-          ${auth.context.userId}
-        )
-        ON CONFLICT (user_id) DO UPDATE
-        SET permission_profile_id = EXCLUDED.permission_profile_id,
-            access_scope = EXCLUDED.access_scope,
-            assigned_by = EXCLUDED.assigned_by,
-            assigned_at = NOW()
-      `;
-    } else {
-      await sql`DELETE FROM user_permission_assignments WHERE user_id = ${input.userId}`;
-    }
-    await sql`
-      UPDATE engagement_memberships
-      SET member_role = ${input.role}, updated_at = NOW()
-      WHERE user_id = ${input.userId}
-    `;
-    await sql`DELETE FROM auth_sessions WHERE user_id = ${input.userId}`;
-    await logAccessAudit({
-      actorId: auth.context.userId,
-      action: "user.access_configured",
-      targetUserId: input.userId,
-      metadata: {
-        role: input.role,
-        status: input.status,
-        permissionProfileId: profileId,
-        accessScope: effectiveScope,
-      },
+    await sql.transaction((tx) => {
+      const assignmentQuery = profileId
+        ? tx`
+            INSERT INTO user_permission_assignments (
+              user_id,
+              permission_profile_id,
+              access_scope,
+              assigned_by
+            )
+            VALUES (
+              ${input.userId},
+              ${profileId},
+              ${effectiveScope},
+              ${auth.context.userId}
+            )
+            ON CONFLICT (user_id) DO UPDATE
+            SET permission_profile_id = EXCLUDED.permission_profile_id,
+                access_scope = EXCLUDED.access_scope,
+                assigned_by = EXCLUDED.assigned_by,
+                assigned_at = NOW()
+          `
+        : tx`DELETE FROM user_permission_assignments WHERE user_id = ${input.userId}`;
+      return [
+        tx`
+          UPDATE users
+          SET role = ${input.role}, status = ${input.status}
+          WHERE id = ${input.userId}
+        `,
+        assignmentQuery,
+        tx`
+          UPDATE engagement_memberships
+          SET member_role = ${input.role}, updated_at = NOW()
+          WHERE user_id = ${input.userId}
+        `,
+        tx`DELETE FROM auth_sessions WHERE user_id = ${input.userId}`,
+        accessAuditQuery(tx, {
+          actorId: auth.context.userId,
+          action: "user.access_configured",
+          targetUserId: input.userId,
+          metadata: {
+            role: input.role,
+            status: input.status,
+            permissionProfileId: profileId,
+            accessScope: effectiveScope,
+          },
+        }),
+      ];
     });
     return NextResponse.json({ configured: true });
   }
@@ -381,50 +391,54 @@ export async function POST(request: Request): Promise<NextResponse> {
   if (matters.length === 0) return NextResponse.json({ error: "Engagement not found" }, { status: 404 });
 
   if (input.action === "assign_engagement") {
-    await sql`
-      INSERT INTO engagement_memberships (
-        matter_id,
-        user_id,
-        member_role,
-        expires_at,
-        assigned_by
-      )
-      VALUES (
-        ${input.matterId},
-        ${input.userId},
-        ${targetRole},
-        ${input.expiresAt ?? null},
-        ${auth.context.userId}
-      )
-      ON CONFLICT (matter_id, user_id) DO UPDATE
-      SET member_role = EXCLUDED.member_role,
-          status = 'active',
-          expires_at = EXCLUDED.expires_at,
-          assigned_by = EXCLUDED.assigned_by,
-          updated_at = NOW()
-    `;
-    await logAccessAudit({
-      actorId: auth.context.userId,
-      action: "engagement_membership.assigned",
-      targetUserId: input.userId,
-      matterId: input.matterId,
-      metadata: { expiresAt: input.expiresAt ?? null, memberRole: targetRole },
-    });
+    await sql.transaction((tx) => [
+      tx`
+        INSERT INTO engagement_memberships (
+          matter_id,
+          user_id,
+          member_role,
+          expires_at,
+          assigned_by
+        )
+        VALUES (
+          ${input.matterId},
+          ${input.userId},
+          ${targetRole},
+          ${input.expiresAt ?? null},
+          ${auth.context.userId}
+        )
+        ON CONFLICT (matter_id, user_id) DO UPDATE
+        SET member_role = EXCLUDED.member_role,
+            status = 'active',
+            expires_at = EXCLUDED.expires_at,
+            assigned_by = EXCLUDED.assigned_by,
+            updated_at = NOW()
+      `,
+      accessAuditQuery(tx, {
+        actorId: auth.context.userId,
+        action: "engagement_membership.assigned",
+        targetUserId: input.userId,
+        matterId: input.matterId,
+        metadata: { expiresAt: input.expiresAt ?? null, memberRole: targetRole },
+      }),
+    ]);
     return NextResponse.json({ assigned: true });
   }
 
-  await sql`
-    UPDATE engagement_memberships
-    SET status = 'revoked', updated_at = NOW()
-    WHERE user_id = ${input.userId}
-      AND matter_id = ${input.matterId}
-  `;
-  await sql`DELETE FROM auth_sessions WHERE user_id = ${input.userId}`;
-  await logAccessAudit({
-    actorId: auth.context.userId,
-    action: "engagement_membership.revoked",
-    targetUserId: input.userId,
-    matterId: input.matterId,
-  });
+  await sql.transaction((tx) => [
+    tx`
+      UPDATE engagement_memberships
+      SET status = 'revoked', updated_at = NOW()
+      WHERE user_id = ${input.userId}
+        AND matter_id = ${input.matterId}
+    `,
+    tx`DELETE FROM auth_sessions WHERE user_id = ${input.userId}`,
+    accessAuditQuery(tx, {
+      actorId: auth.context.userId,
+      action: "engagement_membership.revoked",
+      targetUserId: input.userId,
+      matterId: input.matterId,
+    }),
+  ]);
   return NextResponse.json({ revoked: true });
 }

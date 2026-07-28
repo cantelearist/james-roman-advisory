@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { logAccessAudit } from "@/lib/access-control";
+import { accessAuditQuery } from "@/lib/access-control";
 import { getAuthContext, isSuperAdmin } from "@/lib/auth";
 import { ensureAccessControlTables, getDb } from "@/lib/db";
 
@@ -58,18 +58,20 @@ export async function PATCH(request: Request) {
   }
   await ensureAccessControlTables();
   const sql = getDb();
-  await sql`
-    INSERT INTO portal_settings (key, value, updated_by)
-    VALUES ('workspace', CAST(${JSON.stringify(parsed.data)} AS JSONB), ${auth.context.userId})
-    ON CONFLICT (key) DO UPDATE
-    SET value = EXCLUDED.value,
-        updated_by = EXCLUDED.updated_by,
-        updated_at = NOW()
-  `;
-  await logAccessAudit({
-    actorId: auth.context.userId,
-    action: "workspace.settings_updated",
-    metadata: parsed.data,
-  });
+  await sql.transaction((tx) => [
+    tx`
+      INSERT INTO portal_settings (key, value, updated_by)
+      VALUES ('workspace', CAST(${JSON.stringify(parsed.data)} AS JSONB), ${auth.context.userId})
+      ON CONFLICT (key) DO UPDATE
+      SET value = EXCLUDED.value,
+          updated_by = EXCLUDED.updated_by,
+          updated_at = NOW()
+    `,
+    accessAuditQuery(tx, {
+      actorId: auth.context.userId,
+      action: "workspace.settings_updated",
+      metadata: parsed.data,
+    }),
+  ]);
   return NextResponse.json({ settings: parsed.data });
 }

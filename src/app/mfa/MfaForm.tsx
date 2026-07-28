@@ -3,6 +3,8 @@
 import { FormEvent, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
+import { safeAuthRedirect } from "@/lib/redirect";
+
 type Challenge =
   | { mode: "verify" }
   | { mode: "enroll"; secret: string; uri: string };
@@ -45,13 +47,11 @@ export default function MfaForm() {
       setBusy(false);
       return;
     }
-    const redirectUrl = searchParams.get("redirect_url") || "/portal";
-    window.location.assign(redirectUrl.startsWith("/") ? redirectUrl : "/portal");
+    window.location.assign(safeAuthRedirect(searchParams.get("redirect_url")));
   }
 
   function continueToPortal() {
-    const redirectUrl = searchParams.get("redirect_url") || "/portal";
-    window.location.assign(redirectUrl.startsWith("/") ? redirectUrl : "/portal");
+    window.location.assign(safeAuthRedirect(searchParams.get("redirect_url")));
   }
 
   return (

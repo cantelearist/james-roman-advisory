@@ -1,0 +1,50 @@
+name: Preview smoke
+
+on:
+  repository_dispatch:
+    types:
+      - vercel.deployment.success
+  workflow_dispatch:
+    inputs:
+      deployment_url:
+        description: Vercel preview deployment URL
+        required: true
+        type: string
+      git_sha:
+        description: Git commit to test
+        required: false
+        type: string
+
+jobs:
+  smoke:
+    name: Read-only Vercel preview smoke
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.client_payload.environment != 'production'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.client_payload.git.sha || inputs.git_sha || github.sha }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Install Playwright browser
+        run: npx playwright install chromium --with-deps
+
+      - name: Run read-only smoke tests against preview
+        run: npx playwright test .qa/production-smoke.spec.ts --project=chromium
+        env:
+          PLAYWRIGHT_BASE_URL: ${{ github.event.client_payload.url || inputs.deployment_url }}
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: preview-playwright-report
+          path: playwright-report/
+          retention-days: 7

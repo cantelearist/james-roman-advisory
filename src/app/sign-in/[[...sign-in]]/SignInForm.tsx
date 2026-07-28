@@ -4,6 +4,8 @@ import { FormEvent, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 
+import { safeAuthRedirect } from "@/lib/redirect";
+
 export default function SignInForm() {
   const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
@@ -23,13 +25,12 @@ export default function SignInForm() {
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error ?? "Unable to sign in");
+      const redirectUrl = safeAuthRedirect(searchParams.get("redirect_url"));
       if (result.mfaRequired) {
-        const redirectUrl = searchParams.get("redirect_url") || "/portal";
         window.location.assign(`/mfa?redirect_url=${encodeURIComponent(redirectUrl)}`);
         return;
       }
-      const redirectUrl = searchParams.get("redirect_url") || "/portal";
-      window.location.assign(redirectUrl.startsWith("/") ? redirectUrl : "/portal");
+      window.location.assign(redirectUrl);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Unable to sign in");
     } finally {

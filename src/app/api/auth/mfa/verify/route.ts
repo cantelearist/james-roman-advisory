@@ -24,7 +24,13 @@ const schema = z.object({ code: z.string().trim().min(6).max(32) });
 
 export async function POST(request: Request) {
   const limit = await ratelimit("auth-mfa", getClientIp(request));
-  if (limit?.blocked) {
+  if (!limit.available) {
+    return NextResponse.json(
+      { error: "Verification is temporarily unavailable. Please try again." },
+      { status: 503 },
+    );
+  }
+  if (limit.blocked) {
     return NextResponse.json({ error: "Too many attempts. Please wait and try again." }, { status: 429 });
   }
   const parsed = schema.safeParse(await request.json().catch(() => null));

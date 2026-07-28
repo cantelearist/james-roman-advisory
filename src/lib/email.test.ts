@@ -30,7 +30,9 @@ describe("sendConsultationNotification", () => {
     resendSend.mockResolvedValue({ error: null });
     vi.spyOn(console, "info").mockImplementation(() => {});
 
-    await sendConsultationNotification(data);
+    await expect(sendConsultationNotification(data)).resolves.toEqual({
+      status: "sent",
+    });
 
     expect(resendSend).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -49,10 +51,22 @@ describe("sendConsultationNotification", () => {
     resendSend.mockRejectedValue(new Error("provider unavailable"));
     vi.spyOn(console, "error").mockImplementation(() => {});
 
-    await expect(sendConsultationNotification(data)).resolves.toBeUndefined();
+    await expect(sendConsultationNotification(data)).resolves.toEqual({
+      status: "failed",
+      error: "Error",
+    });
     expect(console.error).toHaveBeenCalledWith(
       "email.failed",
       expect.objectContaining({ referenceId: data.referenceId }),
     );
+  });
+
+  it("reports a skipped delivery when email is not configured", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    await expect(sendConsultationNotification(data)).resolves.toEqual({
+      status: "skipped",
+      error: "email_not_configured",
+    });
   });
 });

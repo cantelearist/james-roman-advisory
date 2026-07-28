@@ -14,7 +14,19 @@ const MESSAGE = "If that address belongs to an active account, recovery instruct
 
 export async function POST(request: Request) {
   const limit = await ratelimit("auth-recovery", getClientIp(request));
-  if (limit?.blocked) return NextResponse.json({ message: MESSAGE });
+  if (!limit.available) {
+    return NextResponse.json(
+      { message: "Password recovery is temporarily unavailable. Please try again." },
+      { status: 503 },
+    );
+  }
+  if (limit.blocked) return NextResponse.json({ message: MESSAGE });
+  if (!process.env.RESEND_API_KEY) {
+    return NextResponse.json(
+      { message: "Password recovery is temporarily unavailable. Please try again." },
+      { status: 503 },
+    );
+  }
 
   const parsed = schema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ message: MESSAGE });
@@ -42,11 +54,19 @@ export async function POST(request: Request) {
         ${expiresAt.toISOString()}
       )
     `;
-    await sendPasswordRecovery({
-      name: String(user.name),
-      email: String(user.email),
-      token,
-    });
+    try {
+      await sendPasswordRecovery({
+        name: String(user.name),
+        email: String(user.email),
+        token,
+      });
+    } catch (error) {
+      await sql`DELETE FROM password_reset_tokens WHERE token_hash = ${hashAuthToken(token)}`;
+      console.error("password_recovery.delivery.failed", {
+        userId: String(user.id),
+        error,
+      });
+    }
   }
   return NextResponse.json({ message: MESSAGE });
 }

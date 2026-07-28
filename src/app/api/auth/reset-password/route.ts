@@ -15,7 +15,13 @@ const schema = z.object({
 
 export async function POST(request: Request) {
   const limit = await ratelimit("auth-reset", getClientIp(request));
-  if (limit?.blocked) {
+  if (!limit.available) {
+    return NextResponse.json(
+      { error: "Password recovery is temporarily unavailable. Please try again." },
+      { status: 503 },
+    );
+  }
+  if (limit.blocked) {
     return NextResponse.json({ error: "Too many attempts. Please wait and try again." }, { status: 429 });
   }
   const parsed = schema.safeParse(await request.json().catch(() => null));
