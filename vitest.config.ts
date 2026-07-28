@@ -14,7 +14,7 @@ export default defineConfig({
     globals: true,
     setupFiles: ["./vitest.setup.ts"],
     css: true,
-    exclude: ["node_modules/**", ".next/**", ".qa/**"],
+    exclude: ["node_modules/**", ".next/**", ".qa/**", "integration/**"],
     coverage: {
       provider: "v8",
       reporter: ["text", "lcov"],

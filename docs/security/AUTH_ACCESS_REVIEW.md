@@ -62,4 +62,6 @@ authority, suspend accounts, or assign and revoke Engagement Memberships.
 - Define a documented, identity-verified Super Admin procedure for lost-factor recovery.
 - Reconcile existing client records whose former provider identifiers cannot be mapped automatically.
 - Move the authorization policy into database row-level security before granting direct database access to any secondary application or reporting tool.
-- Add integration coverage against a disposable Postgres branch for every role/capability/scope combination.
+- Configure the repository `NEON_API_KEY` secret and `NEON_PROJECT_ID` variable,
+  then execute the implemented disposable-database role/capability/scope matrix.
+  The fail-closed harness is present, but live branch execution remains pending.
