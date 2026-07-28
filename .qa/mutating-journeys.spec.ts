@@ -1,13 +1,15 @@
 import { expect, test } from "@playwright/test";
 
+import {
+  assertDisposableDatabaseEnvironment,
+  assertLoopbackMutationTarget,
+} from "../src/lib/disposable-database";
+
 const baseUrl = process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000";
-const hostname = new URL(baseUrl).hostname;
-const productionHosts = new Set(["jamesroman.la", "www.jamesroman.la"]);
 
 test.beforeAll(() => {
-  if (productionHosts.has(hostname)) {
-    throw new Error("Mutating E2E tests are forbidden against production.");
-  }
+  assertLoopbackMutationTarget(baseUrl);
+  assertDisposableDatabaseEnvironment(process.env);
   if (process.env.ALLOW_MUTATING_E2E !== "true") {
     throw new Error("Set ALLOW_MUTATING_E2E=true to run mutating E2E tests.");
   }

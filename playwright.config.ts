@@ -1,5 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 
+const integrationDatabaseUrl = process.env.INTEGRATION_DATABASE_URL;
+
 export default defineConfig({
   testDir: ".qa",
   fullyParallel: true,
@@ -22,5 +24,8 @@ export default defineConfig({
         url: "http://localhost:3000",
         reuseExistingServer: !process.env.CI,
         timeout: 120_000,
+        env: integrationDatabaseUrl
+          ? { DATABASE_URL: integrationDatabaseUrl }
+          : undefined,
       },
 });
