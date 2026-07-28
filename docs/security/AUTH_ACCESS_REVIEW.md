@@ -76,4 +76,7 @@ Console check confirmed that no `test/jra-access-*` branch remained.
 - Complete live authenticator enrollment for every production staff identity before broad client onboarding.
 - Define a documented, identity-verified Super Admin procedure for lost-factor recovery.
 - Reconcile existing client records whose former provider identifiers cannot be mapped automatically.
-- Move the authorization policy into database row-level security before granting direct database access to any secondary application or reporting tool.
+- Complete the staged
+  [RLS readiness plan](./RLS_READINESS_PLAN.md) before granting direct database
+  access to any secondary application or reporting tool. Production RLS is not
+  enabled yet.

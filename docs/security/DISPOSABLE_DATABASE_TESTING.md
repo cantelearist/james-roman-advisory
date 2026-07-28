@@ -20,7 +20,12 @@ The supported integration workflow:
 4. Passes the branch ID, endpoint host, branch type, and expiry to the test
    process.
 5. Runs the role, capability, and scope matrix against that branch.
-6. Deletes the branch even when tests fail. Neon expiry remains a second cleanup
+6. Confirms every public application table has an explicit RLS classification.
+7. Creates a temporary unprivileged SQL role and fixture policy to prove that
+   missing scope defaults to no rows, transaction-local scope does not leak,
+   and cross-scope writes are rejected.
+8. Deletes the fixture role and table, then deletes the branch even when tests
+   fail. Neon expiry remains a second cleanup
    mechanism.
 
 The runtime guard rejects missing attestations, production execution, ordinary
@@ -46,3 +51,7 @@ actions receive it.
 Run **Disposable database access integration** from GitHub Actions and select
 the Git ref to test. The workflow is manual by design so unreviewed pull-request
 code cannot automatically receive database credentials.
+
+The RLS fixture is intentionally isolated from application tables. Passing this
+suite proves the required Postgres mechanics; it does not mean production RLS
+is enabled.
