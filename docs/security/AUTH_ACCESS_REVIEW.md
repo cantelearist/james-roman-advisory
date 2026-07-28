@@ -1,6 +1,7 @@
 # Authentication and Access Review
 
-Updated 2026-07-26 after the engagement-scoped authorization and staff MFA migration.
+Updated 2026-07-27 after the engagement-scoped authorization, staff MFA
+migration, and live disposable-database access-matrix verification.
 
 ## Current model
 
@@ -56,12 +57,23 @@ authority, suspend accounts, or assign and revoke Engagement Memberships.
 - `STAGING_PASSWORD` for the staging host gate
 - `MFA_ENCRYPTION_KEY` as a base64-encoded 32-byte encryption key
 
+## Verified disposable-database access matrix
+
+GitHub Actions run
+[`30328567640`](https://github.com/cantelearist/james-roman-advisory/actions/runs/30328567640)
+executed the database-backed role, capability, and scope matrix against a
+two-hour, schema-only Neon branch at commit
+`0976a429937409057df1ae194ed7bee2644cc49d`.
+
+The run verified every declared capability for Super Admin, global Admin,
+assigned Admin, Contractor, and Client access, including active, absent,
+revoked, and expired engagement memberships. The job completed successfully,
+and its unconditional cleanup deleted the disposable branch. A separate Neon
+Console check confirmed that no `test/jra-access-*` branch remained.
+
 ## Remaining review items
 
 - Complete live authenticator enrollment for every production staff identity before broad client onboarding.
 - Define a documented, identity-verified Super Admin procedure for lost-factor recovery.
 - Reconcile existing client records whose former provider identifiers cannot be mapped automatically.
 - Move the authorization policy into database row-level security before granting direct database access to any secondary application or reporting tool.
-- Configure the repository `NEON_API_KEY` secret and `NEON_PROJECT_ID` variable,
-  then execute the implemented disposable-database role/capability/scope matrix.
-  The fail-closed harness is present, but live branch execution remains pending.
