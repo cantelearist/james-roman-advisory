@@ -20,9 +20,10 @@ jobs:
 
       - run: npm ci
 
+      - name: Reject vulnerable production dependencies
+        run: npm run audit:production
+
       - run: npm run test -- --reporter=verbose
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
   e2e:
     name: Read-only production smoke
