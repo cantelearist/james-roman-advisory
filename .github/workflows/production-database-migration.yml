@@ -1,0 +1,62 @@
+name: Protected production database migration
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Operation to perform
+        required: true
+        type: choice
+        default: preflight
+        options:
+          - preflight
+          - apply
+      expected_sha:
+        description: Exact 40-character main commit SHA
+        required: true
+        type: string
+      confirmation:
+        description: Type the exact preflight or apply confirmation phrase
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-database-migration
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    name: ${{ inputs.mode == 'apply' && 'Apply production migrations' || 'Inspect production migrations' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: production-database-migrations
+
+    steps:
+      - name: Check out dispatched main commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Run protected production migration command
+        run: npm run db:migrate:production
+        env:
+          ALLOW_PRODUCTION_DATABASE_MIGRATIONS: "true"
+          PRODUCTION_MIGRATION_ENVIRONMENT: production-database-migrations
+          MIGRATION_MODE: ${{ inputs.mode }}
+          MIGRATION_EXPECTED_SHA: ${{ inputs.expected_sha }}
+          MIGRATION_CONFIRMATION: ${{ inputs.confirmation }}
+          MIGRATION_DATABASE_URL: ${{ secrets.MIGRATION_DATABASE_URL }}
+          MIGRATION_DATABASE_HOST: ${{ vars.MIGRATION_DATABASE_HOST }}
