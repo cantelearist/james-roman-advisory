@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   access-matrix:
-    name: Role, capability, and scope matrix
+    name: Access matrix and RLS readiness
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -52,8 +52,8 @@ jobs:
           expires_at: ${{ steps.expiry.outputs.expires_at }}
           api_key: ${{ secrets.NEON_API_KEY }}
 
-      - name: Run database-backed access matrix
-        run: npm run test:integration:access
+      - name: Run database-backed access and RLS readiness suites
+        run: npm run test:integration:database
         env:
           ALLOW_DATABASE_INTEGRATION: "true"
           INTEGRATION_DATABASE_URL: ${{ steps.create-branch.outputs.db_url_pooled }}

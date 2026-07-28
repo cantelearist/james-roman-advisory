@@ -13,6 +13,7 @@
     "test:e2e:mutating": "playwright test .qa/mutating-journeys.spec.ts --project=chromium --reporter=line",
     "test:e2e:all": "playwright test .qa --reporter=line",
     "test:integration:access": "vitest run --config vitest.integration.config.ts",
+    "test:integration:database": "vitest run --config vitest.integration.config.ts",
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
