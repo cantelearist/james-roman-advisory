@@ -20,6 +20,10 @@ describe("ratelimit", () => {
   beforeEach(() => {
     vi.resetModules();
     limit.mockReset();
+    vi.stubEnv("UPSTASH_REDIS_REST_URL", "");
+    vi.stubEnv("UPSTASH_REDIS_REST_TOKEN", "");
+    vi.stubEnv("KV_REST_API_URL", "");
+    vi.stubEnv("KV_REST_API_TOKEN", "");
   });
 
   afterEach(() => {
@@ -27,8 +31,6 @@ describe("ratelimit", () => {
   });
 
   it("fails closed when Upstash is not configured", async () => {
-    vi.stubEnv("UPSTASH_REDIS_REST_URL", "");
-    vi.stubEnv("UPSTASH_REDIS_REST_TOKEN", "");
     const { ratelimit } = await import("./ratelimit");
 
     await expect(ratelimit("auth-login", "127.0.0.1")).resolves.toMatchObject({
@@ -41,6 +43,20 @@ describe("ratelimit", () => {
   it("returns the provider decision when available", async () => {
     vi.stubEnv("UPSTASH_REDIS_REST_URL", "https://redis.example");
     vi.stubEnv("UPSTASH_REDIS_REST_TOKEN", "secret");
+    limit.mockResolvedValue({ success: true, remaining: 4, reset: 123 });
+    const { ratelimit } = await import("./ratelimit");
+
+    await expect(ratelimit("consultation", "127.0.0.1")).resolves.toEqual({
+      available: true,
+      blocked: false,
+      remaining: 4,
+      reset: 123,
+    });
+  });
+
+  it("accepts Vercel Marketplace KV credentials", async () => {
+    vi.stubEnv("KV_REST_API_URL", "https://redis.example");
+    vi.stubEnv("KV_REST_API_TOKEN", "secret");
     limit.mockResolvedValue({ success: true, remaining: 4, reset: 123 });
     const { ratelimit } = await import("./ratelimit");
 

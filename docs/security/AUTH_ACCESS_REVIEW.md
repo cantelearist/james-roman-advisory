@@ -48,7 +48,8 @@ authority, suspend accounts, or assign and revoke Engagement Memberships.
 - `RESEND_API_KEY` for consultation and invitation email
 - `SITE_URL` as the private canonical application origin used for request
   validation and secure email links
-- `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` for mandatory
+- `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN`, or the Vercel
+  Marketplace aliases `KV_REST_API_URL` and `KV_REST_API_TOKEN`, for mandatory
   distributed rate limiting on sensitive write routes
 - `BLOB_READ_WRITE_TOKEN` for vault storage
 - `SEED_KEY` and `SEED_PASSWORD` only when the controlled seed endpoint is needed

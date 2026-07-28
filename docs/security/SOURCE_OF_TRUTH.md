@@ -49,6 +49,8 @@ handlers call `getAuthContext()` and enforce capability and scope checks themsel
 `DATABASE_URL`, `RESEND_API_KEY`, `BLOB_READ_WRITE_TOKEN`, and
 `STAGING_PASSWORD`, plus `MFA_ENCRYPTION_KEY`. Stripe billing additionally
 requires `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET`. `SEED_KEY` plus `SEED_PASSWORD` are only required for a
-controlled seed operation. Upstash variables enable rate limiting when present.
+controlled seed operation. Distributed rate limiting requires either
+`UPSTASH_REDIS_REST_URL` plus `UPSTASH_REDIS_REST_TOKEN`, or the Vercel
+Marketplace aliases `KV_REST_API_URL` plus `KV_REST_API_TOKEN`.
 
 No hosted authentication-provider variables belong in this project.
