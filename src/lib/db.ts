@@ -1,5 +1,7 @@
 import { neon } from "@neondatabase/serverless";
 
+import { SCHEMA_MIGRATION_VERSIONS } from "./schema-migration-manifest";
+
 export type MatterType =
   | "mold"
   | "smoke_damage"
@@ -143,7 +145,7 @@ export function ensureAuthTables(): Promise<void> {
 }
 
 async function ensureAuthTablesImpl() {
-  const version = "2026-07-26-auth-v1";
+  const version = SCHEMA_MIGRATION_VERSIONS.auth;
   if (await schemaVersionApplied(version)) return;
   await ensureUsersTable();
   const sql = getDb();
@@ -280,7 +282,7 @@ export function ensureVaultTables(): Promise<void> {
 }
 
 async function ensureVaultTablesImpl() {
-  const version = "2026-07-26-vault-v1";
+  const version = SCHEMA_MIGRATION_VERSIONS.vault;
   if (await schemaVersionApplied(version)) return;
   const sql = getDb();
 
@@ -500,7 +502,7 @@ export function ensureAccessControlTables(): Promise<void> {
 async function ensureAccessControlTablesImpl() {
   await ensureAuthTables();
   await ensureVaultTables();
-  const version = "2026-07-26-access-v1";
+  const version = SCHEMA_MIGRATION_VERSIONS.access;
   if (await schemaVersionApplied(version)) return;
   const sql = getDb();
 
@@ -669,7 +671,7 @@ export function ensureEngagementOperationsTables(): Promise<void> {
 
 async function ensureEngagementOperationsTablesImpl() {
   await ensureAccessControlTables();
-  const version = "2026-07-26-operations-v1";
+  const version = SCHEMA_MIGRATION_VERSIONS.operations;
   if (await schemaVersionApplied(version)) return;
   const sql = getDb();
 

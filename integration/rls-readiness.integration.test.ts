@@ -29,10 +29,13 @@ beforeAll(async () => {
   process.env.DATABASE_URL = config.databaseUrl;
   databaseConfigured = true;
 
-  const { ensureEngagementOperationsTables, getDb } = await import("@/lib/db");
-  await ensureEngagementOperationsTables();
+  const { assertRequiredSchemaVersions } = await import(
+    "@/lib/schema-migrations"
+  );
+  await assertRequiredSchemaVersions();
   await cleanupFixture();
 
+  const { getDb } = await import("@/lib/db");
   const sql = getDb();
   await sql`
     CREATE ROLE integration_rls_runtime
@@ -86,6 +89,18 @@ afterAll(async () => {
 });
 
 describe("RLS readiness on a disposable database", () => {
+  it("requires the complete ordered migration manifest before tests run", async () => {
+    const { assertRequiredSchemaVersions } = await import(
+      "@/lib/schema-migrations"
+    );
+    const result = await assertRequiredSchemaVersions();
+
+    expect(result.requiredVersions).toHaveLength(6);
+    expect(result.appliedVersions).toEqual(
+      expect.arrayContaining(result.requiredVersions),
+    );
+  });
+
   it("matches the live public-schema inventory to the explicit classification", async () => {
     const { getDb } = await import("@/lib/db");
     const sql = getDb();
