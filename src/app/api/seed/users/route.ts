@@ -35,7 +35,13 @@ export async function POST(req: NextRequest) {
   // Rate limit: 10 attempts per hour per IP (defense-in-depth; SEED_KEY is the primary gate)
   const ip = getClientIp(req);
   const rl = await ratelimit("seed", ip);
-  if (rl?.blocked) {
+  if (!rl.available) {
+    return NextResponse.json(
+      { error: "Seed endpoint rate limiting is unavailable" },
+      { status: 503 },
+    );
+  }
+  if (rl.blocked) {
     return NextResponse.json({ error: "Too many requests" }, { status: 429 });
   }
 

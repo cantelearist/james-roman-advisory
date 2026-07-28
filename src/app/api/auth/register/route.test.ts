@@ -5,6 +5,7 @@ const authMocks = vi.hoisted(() => ({
   createSession: vi.fn(),
   setSessionCookie: vi.fn(),
 }));
+const ratelimit = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/db", () => ({
   ensureAccessControlTables: vi.fn().mockResolvedValue(undefined),
@@ -17,6 +18,10 @@ vi.mock("@/lib/auth", () => ({
 vi.mock("@/lib/password", () => ({
   hashPassword: vi.fn().mockResolvedValue("hashed-password"),
 }));
+vi.mock("@/lib/ratelimit", () => ({
+  getClientIp: vi.fn(() => "127.0.0.1"),
+  ratelimit,
+}));
 
 import { POST } from "./route";
 
@@ -25,6 +30,13 @@ describe("Private Office registration boundary", () => {
     sql.mockReset();
     authMocks.createSession.mockReset();
     authMocks.setSessionCookie.mockReset();
+    ratelimit.mockReset();
+    ratelimit.mockResolvedValue({
+      available: true,
+      blocked: false,
+      remaining: 4,
+      reset: Date.now() + 60_000,
+    });
   });
 
   it("rejects an unknown self-service account without an invitation", async () => {

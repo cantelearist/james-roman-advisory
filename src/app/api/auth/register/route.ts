@@ -6,6 +6,7 @@ import { createSession, setSessionCookie } from "@/lib/auth";
 import { ensureAccessControlTables, getDb } from "@/lib/db";
 import type { AccessScope, UserRole } from "@/lib/data-model";
 import { hashPassword } from "@/lib/password";
+import { getClientIp, ratelimit } from "@/lib/ratelimit";
 
 export const runtime = "nodejs";
 
@@ -21,6 +22,20 @@ function hashToken(token: string): string {
 }
 
 export async function POST(request: Request) {
+  const limit = await ratelimit("auth-register", getClientIp(request));
+  if (!limit.available) {
+    return NextResponse.json(
+      { error: "Registration is temporarily unavailable. Please try again." },
+      { status: 503 },
+    );
+  }
+  if (limit.blocked) {
+    return NextResponse.json(
+      { error: "Too many registration attempts. Please wait and try again." },
+      { status: 429 },
+    );
+  }
+
   let body: unknown;
   try {
     body = await request.json();

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { logAccessAudit } from "@/lib/access-control";
+import { accessAuditQuery } from "@/lib/access-control";
 import { getAuthContext, isSuperAdmin } from "@/lib/auth";
 import { ensureEngagementOperationsTables, getDb } from "@/lib/db";
 
@@ -80,26 +80,28 @@ export async function PATCH(request: Request) {
     ? existing[0].configuration as Record<string, unknown>
     : {};
   if (parsed.data.dueInDays !== undefined) configuration.dueInDays = parsed.data.dueInDays;
-  const rows = await sql`
-    UPDATE portal_automations
-    SET enabled = ${parsed.data.enabled},
-        owner_user_id = ${parsed.data.ownerUserId},
-        configuration = ${JSON.stringify(configuration)},
-        updated_by = ${auth.context.userId},
-        updated_at = NOW()
-    WHERE id = ${parsed.data.id}
-    RETURNING *
-  `;
-  await logAccessAudit({
-    actorId: auth.context.userId,
-    action: "automation.updated",
-    metadata: {
-      automationId: parsed.data.id,
-      recipeKey: String(existing[0].recipe_key),
-      enabled: parsed.data.enabled,
-      ownerUserId: parsed.data.ownerUserId,
-      configuration,
-    },
-  });
+  const [rows] = await sql.transaction((tx) => [
+    tx`
+      UPDATE portal_automations
+      SET enabled = ${parsed.data.enabled},
+          owner_user_id = ${parsed.data.ownerUserId},
+          configuration = ${JSON.stringify(configuration)},
+          updated_by = ${auth.context.userId},
+          updated_at = NOW()
+      WHERE id = ${parsed.data.id}
+      RETURNING *
+    `,
+    accessAuditQuery(tx, {
+      actorId: auth.context.userId,
+      action: "automation.updated",
+      metadata: {
+        automationId: parsed.data.id,
+        recipeKey: String(existing[0].recipe_key),
+        enabled: parsed.data.enabled,
+        ownerUserId: parsed.data.ownerUserId,
+        configuration,
+      },
+    }),
+  ]);
   return NextResponse.json({ automation: rows[0] });
 }

@@ -3,14 +3,15 @@ import { Resend } from "resend";
 import { NextRequest, NextResponse } from "next/server";
 
 import {
+  accessAuditQuery,
   authorizeCapability,
   getPortalAccessSummary,
-  logAccessAudit,
 } from "@/lib/access-control";
 import { getAuthContext, isSuperAdmin } from "@/lib/auth";
 import type { AccessScope, UserRole } from "@/lib/data-model";
 import { ensureAccessControlTables, getDb } from "@/lib/db";
 import { ratelimit } from "@/lib/ratelimit";
+import { canonicalSiteOrigin } from "@/lib/site-url";
 
 export const runtime = "nodejs";
 
@@ -19,24 +20,49 @@ function hashToken(token: string): string {
 }
 
 async function sendInvitationEmail(email: string, token: string, expiresInDays: number) {
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? "https://www.jamesroman.la";
-  const inviteUrl = `${baseUrl}/sign-up?invite=${encodeURIComponent(token)}&email=${encodeURIComponent(email)}`;
   if (!process.env.RESEND_API_KEY) {
     console.warn("invite.email.skipped", "RESEND_API_KEY not set");
     return { sent: false, error: "email_not_configured" };
   }
   const resend = new Resend(process.env.RESEND_API_KEY);
-  const { data, error } = await resend.emails.send({
-    from: "James Roman Advisory <roman@jamesroman.la>",
-    to: [email],
-    subject: "Your James Roman Advisory Private Office invitation",
-    html: `<p>You have been invited to the James Roman Advisory Private Office.</p><p><a href="${inviteUrl}">Create your secure account</a></p><p>This invitation expires in ${expiresInDays} day${expiresInDays === 1 ? "" : "s"}.</p>`,
-  });
-  if (error) {
+  try {
+    const baseUrl = canonicalSiteOrigin();
+    const inviteUrl = `${baseUrl}/sign-up?invite=${encodeURIComponent(token)}&email=${encodeURIComponent(email)}`;
+    const { data, error } = await resend.emails.send({
+      from: "James Roman Advisory <roman@jamesroman.la>",
+      to: [email],
+      subject: "Your James Roman Advisory Private Office invitation",
+      html: `<p>You have been invited to the James Roman Advisory Private Office.</p><p><a href="${inviteUrl}">Create your secure account</a></p><p>This invitation expires in ${expiresInDays} day${expiresInDays === 1 ? "" : "s"}.</p>`,
+    });
+    if (error) {
+      console.error("invite.email.failed", { email, error });
+      return { sent: false, error: error.name };
+    }
+    return { sent: true, providerId: data?.id ?? null };
+  } catch (error) {
     console.error("invite.email.failed", { email, error });
-    return { sent: false, error: error.name };
+    return {
+      sent: false,
+      error: error instanceof Error ? error.name : "provider_error",
+    };
   }
-  return { sent: true, providerId: data?.id ?? null };
+}
+
+async function invitationRateLimit(userId: string): Promise<NextResponse | null> {
+  const limit = await ratelimit("invite", userId);
+  if (!limit.available) {
+    return NextResponse.json(
+      { error: "Invitation service is temporarily unavailable. Please try again." },
+      { status: 503 },
+    );
+  }
+  if (limit.blocked) {
+    return NextResponse.json(
+      { error: "Too many requests. Please try again later." },
+      { status: 429 },
+    );
+  }
+  return null;
 }
 
 export async function POST(req: NextRequest) {
@@ -47,8 +73,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const rl = await ratelimit("invite", context.userId);
-  if (rl?.blocked) return NextResponse.json({ error: "Too many requests. Please try again later." }, { status: 429 });
+  const limited = await invitationRateLimit(context.userId);
+  if (limited) return limited;
 
   let body: {
     email?: string;
@@ -127,38 +153,39 @@ export async function POST(req: NextRequest) {
   const expiryDays = Number.isInteger(configuredExpiry) && configuredExpiry >= 1 && configuredExpiry <= 30
     ? configuredExpiry
     : 7;
-  await sql`DELETE FROM auth_invitations WHERE LOWER(email) = ${email} AND accepted_at IS NULL`;
-  await sql`
-    INSERT INTO auth_invitations (
-      id,
-      email,
-      role,
-      token_hash,
-      permission_profile_id,
-      access_scope,
-      matter_id,
-      expires_at
-    )
-    VALUES (
-      ${invitationId},
-      ${email},
-      ${assignedRole},
-      ${hashToken(token)},
-      ${permissionProfileId},
-      ${accessScope},
-      ${matterId},
-      NOW() + (${expiryDays} * INTERVAL '1 day')
-    )
-  `;
+  await sql.transaction((tx) => [
+    tx`DELETE FROM auth_invitations WHERE LOWER(email) = ${email} AND accepted_at IS NULL`,
+    tx`
+      INSERT INTO auth_invitations (
+        id,
+        email,
+        role,
+        token_hash,
+        permission_profile_id,
+        access_scope,
+        matter_id,
+        expires_at
+      )
+      VALUES (
+        ${invitationId},
+        ${email},
+        ${assignedRole},
+        ${hashToken(token)},
+        ${permissionProfileId},
+        ${accessScope},
+        ${matterId},
+        NOW() + (${expiryDays} * INTERVAL '1 day')
+      )
+    `,
+    accessAuditQuery(tx, {
+      actorId: context.userId,
+      action: "invitation.created",
+      matterId: matterId ?? undefined,
+      metadata: { email, role: assignedRole, permissionProfileId, accessScope },
+    }),
+  ]);
 
   const delivery = await sendInvitationEmail(email, token, expiryDays);
-
-  await logAccessAudit({
-    actorId: context.userId,
-    action: "invitation.created",
-    matterId: matterId ?? undefined,
-    metadata: { email, role: assignedRole, permissionProfileId, accessScope },
-  });
 
   return NextResponse.json({
     id: invitationId,
@@ -225,6 +252,8 @@ export async function PATCH(req: NextRequest) {
   if (!(await authorizeCapability(context, access, "users.invite"))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
+  const limited = await invitationRateLimit(context.userId);
+  if (limited) return limited;
   const body = await req.json().catch(() => null) as { id?: string; action?: string } | null;
   if (!body?.id || body.action !== "resend") {
     return NextResponse.json({ error: "Invalid invitation action" }, { status: 400 });
@@ -251,18 +280,20 @@ export async function PATCH(req: NextRequest) {
   const configuredExpiry = Number(settings?.invitationExpiryDays ?? 7);
   const expiryDays = Number.isInteger(configuredExpiry) && configuredExpiry >= 1 && configuredExpiry <= 30 ? configuredExpiry : 7;
   const token = randomBytes(32).toString("base64url");
-  await sql`
-    UPDATE auth_invitations
-    SET token_hash = ${hashToken(token)},
-        expires_at = NOW() + (${expiryDays} * INTERVAL '1 day')
-    WHERE id = ${body.id}
-  `;
+  await sql.transaction((tx) => [
+    tx`
+      UPDATE auth_invitations
+      SET token_hash = ${hashToken(token)},
+          expires_at = NOW() + (${expiryDays} * INTERVAL '1 day')
+      WHERE id = ${body.id}
+    `,
+    accessAuditQuery(tx, {
+      actorId: context.userId,
+      action: "invitation.resent",
+      metadata: { invitationId: body.id, email: invitation.email },
+    }),
+  ]);
   const delivery = await sendInvitationEmail(String(invitation.email), token, expiryDays);
-  await logAccessAudit({
-    actorId: context.userId,
-    action: "invitation.resent",
-    metadata: { invitationId: body.id, email: invitation.email },
-  });
   return NextResponse.json({ resent: true, delivery });
 }
 
@@ -293,11 +324,13 @@ export async function DELETE(req: NextRequest) {
   if (invitation.matter_id && !(await authorizeCapability(context, access, "users.invite", { matterId: String(invitation.matter_id) }))) {
     return NextResponse.json({ error: "Invitation not found" }, { status: 404 });
   }
-  await sql`DELETE FROM auth_invitations WHERE id = ${id}`;
-  await logAccessAudit({
-    actorId: context.userId,
-    action: "invitation.revoked",
-    metadata: { invitationId: id },
-  });
+  await sql.transaction((tx) => [
+    tx`DELETE FROM auth_invitations WHERE id = ${id}`,
+    accessAuditQuery(tx, {
+      actorId: context.userId,
+      action: "invitation.revoked",
+      metadata: { invitationId: id },
+    }),
+  ]);
   return NextResponse.json({ revoked: true });
 }

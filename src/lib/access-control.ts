@@ -1,4 +1,8 @@
 import type { AuthContext } from "@/lib/auth";
+import type {
+  NeonQueryFunction,
+  NeonQueryFunctionInTransaction,
+} from "@neondatabase/serverless";
 import {
   CAPABILITIES,
   type AccessScope,
@@ -195,16 +199,32 @@ export async function authorizeCapability(
   return true;
 }
 
-export async function logAccessAudit(options: {
+export type AccessAuditOptions = {
   actorId: string;
   action: string;
   targetUserId?: string;
   matterId?: string;
   metadata?: Record<string, unknown>;
-}): Promise<void> {
-  await ensureAccessControlTables();
-  const sql = getDb();
-  await sql`
+};
+
+export function accessAuditQuery(
+  sql: NeonQueryFunction<false, false>,
+  options: AccessAuditOptions,
+): ReturnType<NeonQueryFunction<false, false>>;
+export function accessAuditQuery<
+  ArrayMode extends boolean,
+  FullResults extends boolean,
+>(
+  sql: NeonQueryFunctionInTransaction<ArrayMode, FullResults>,
+  options: AccessAuditOptions,
+): ReturnType<NeonQueryFunctionInTransaction<ArrayMode, FullResults>>;
+export function accessAuditQuery(
+  sql:
+    | NeonQueryFunction<false, false>
+    | NeonQueryFunctionInTransaction<boolean, boolean>,
+  options: AccessAuditOptions,
+) {
+  return sql`
     INSERT INTO access_audit_events (
       actor_id,
       action,
@@ -220,4 +240,21 @@ export async function logAccessAudit(options: {
       ${options.metadata ? JSON.stringify(options.metadata) : null}
     )
   `;
+}
+
+export async function logAccessAudit(
+  options: AccessAuditOptions,
+): Promise<void> {
+  try {
+    await ensureAccessControlTables();
+    const sql = getDb();
+    await accessAuditQuery(sql, options);
+  } catch (error) {
+    console.error("access_audit.write.failed", {
+      actorId: options.actorId,
+      action: options.action,
+      error,
+    });
+    throw new Error("Mandatory access audit write failed", { cause: error });
+  }
 }

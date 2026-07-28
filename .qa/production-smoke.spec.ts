@@ -1,5 +1,39 @@
 import { expect, test } from "@playwright/test";
 
+const productionOrigin = new URL(
+  process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000",
+).origin;
+const safeProductionPaths = [
+  /^\/$/,
+  /^\/portal$/,
+  /^\/sign-in$/,
+  /^\/sign-up$/,
+  /^\/forgot-password$/,
+  /^\/reset-password$/,
+  /^\/mfa$/,
+  /^\/_next\//,
+  /\.(?:css|js|jpe?g|webp|png|gif|svg|ico|woff2?)$/,
+];
+
+test.beforeEach(async ({ page }) => {
+  await page.route("**/*", async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    const safeMethod = request.method() === "GET" || request.method() === "HEAD";
+    const safePath =
+      url.origin !== productionOrigin ||
+      safeProductionPaths.some((pattern) => pattern.test(url.pathname));
+
+    if (!safeMethod || !safePath) {
+      await route.abort("blockedbyclient");
+      throw new Error(
+        `Production smoke test blocked ${request.method()} ${url.pathname}`,
+      );
+    }
+    await route.continue();
+  });
+});
+
 test("homepage exposes the current advisory message and consultation CTA", async ({ page }) => {
   await page.goto("/", { waitUntil: "networkidle" });
 
@@ -33,19 +67,6 @@ test("consultation form shows validation errors on bad input", async ({ page }) 
   await page.getByLabel("Brief context").fill("short");
   await page.getByRole("button", { name: /Submit request/i }).click();
   await expect(page.getByRole("alert")).toBeVisible();
-});
-
-test("consultation form submits valid data", async ({ page }) => {
-  await page.goto("/#consultation", { waitUntil: "networkidle" });
-  await page.getByLabel("Name").fill("Alexandra Reed");
-  await page.getByLabel("Email").fill(`alex.reed+${Date.now()}@example.com`);
-  await page.getByLabel("Primary market").fill("Malibu");
-  await page.getByLabel("Matter type").fill("Remediation oversight");
-  await page.getByLabel("Brief context").fill(
-    "We need owner-side advisory for a post-fire remediation review on a private coastal property.",
-  );
-  await page.getByRole("button", { name: /Submit request/i }).click();
-  await expect(page.locator('p[role="status"]')).toContainText("Request Submitted");
 });
 
 test("private office entry points to the protected portal", async ({ page }) => {

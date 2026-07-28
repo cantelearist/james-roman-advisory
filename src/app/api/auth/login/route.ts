@@ -9,6 +9,7 @@ import {
 import { ensureAuthTables, getDb } from "@/lib/db";
 import { hashAuthToken } from "@/lib/mfa";
 import { verifyPassword } from "@/lib/password";
+import { getClientIp, ratelimit } from "@/lib/ratelimit";
 
 export const runtime = "nodejs";
 
@@ -18,6 +19,20 @@ const loginSchema = z.object({
 });
 
 export async function POST(request: Request) {
+  const limit = await ratelimit("auth-login", getClientIp(request));
+  if (!limit.available) {
+    return NextResponse.json(
+      { error: "Sign-in is temporarily unavailable. Please try again." },
+      { status: 503 },
+    );
+  }
+  if (limit.blocked) {
+    return NextResponse.json(
+      { error: "Too many sign-in attempts. Please wait and try again." },
+      { status: 429 },
+    );
+  }
+
   let body: unknown;
   try {
     body = await request.json();

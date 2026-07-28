@@ -2,6 +2,7 @@ import { Resend } from "resend";
 
 import type { ResourceAudience } from "@/lib/data-model";
 import { ensureEngagementOperationsTables, getDb } from "@/lib/db";
+import { canonicalSiteOrigin } from "@/lib/site-url";
 
 const FROM = "James Roman Advisory <roman@jamesroman.la>";
 
@@ -19,7 +20,7 @@ function mayReceive(role: string, audience: ResourceAudience): boolean {
   return audience === "client";
 }
 
-export async function notifyEngagementMembers(options: {
+export type EngagementNotificationOptions = {
   matterId: string;
   actorId: string;
   audience: ResourceAudience;
@@ -35,7 +36,17 @@ export async function notifyEngagementMembers(options: {
   subject: string;
   preview: string;
   path: string;
-}): Promise<{ sent: number; failed: number }> {
+};
+
+export type EngagementNotificationResult = {
+  sent: number;
+  failed: number;
+  degraded: boolean;
+};
+
+async function deliverEngagementNotifications(
+  options: EngagementNotificationOptions,
+): Promise<EngagementNotificationResult> {
   await ensureEngagementOperationsTables();
   const sql = getDb();
   const settingsRows = await sql`SELECT value FROM portal_settings WHERE key = 'workspace' LIMIT 1`;
@@ -49,7 +60,9 @@ export async function notifyEngagementMembers(options: {
       : ["invoice_issued", "invoice_reminder", "contract_issued", "change_order_issued"].includes(options.eventType)
         ? "notifyOnInvoice"
         : "notifyOnTask";
-  if (settings[preference] === false) return { sent: 0, failed: 0 };
+  if (settings[preference] === false) {
+    return { sent: 0, failed: 0, degraded: false };
+  }
   const rows = await sql`
     SELECT DISTINCT u.id, u.name, u.email, u.role
     FROM users u
@@ -68,13 +81,12 @@ export async function notifyEngagementMembers(options: {
       )
   `;
   const recipients = rows.filter((row) => mayReceive(String(row.role), options.audience));
-  if (recipients.length === 0) return { sent: 0, failed: 0 };
+  if (recipients.length === 0) {
+    return { sent: 0, failed: 0, degraded: false };
+  }
 
   const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
-  const siteUrl = (
-    process.env.NEXT_PUBLIC_SITE_URL ??
-    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "https://www.jamesroman.la")
-  ).replace(/\/$/, "");
+  const siteUrl = canonicalSiteOrigin();
   let sent = 0;
   let failed = 0;
   for (const recipient of recipients) {
@@ -140,5 +152,24 @@ export async function notifyEngagementMembers(options: {
       )
     `;
   }
-  return { sent, failed };
+  return { sent, failed, degraded: failed > 0 || !resend };
+}
+
+/**
+ * Notifications are a best-effort side effect. Delivery failures are reported
+ * but never turn an already committed engagement mutation into a false failure.
+ */
+export async function notifyEngagementMembers(
+  options: EngagementNotificationOptions,
+): Promise<EngagementNotificationResult> {
+  try {
+    return await deliverEngagementNotifications(options);
+  } catch (error) {
+    console.error("notification.delivery.failed", {
+      matterId: options.matterId,
+      eventType: options.eventType,
+      error,
+    });
+    return { sent: 0, failed: 1, degraded: true };
+  }
 }

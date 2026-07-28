@@ -9,8 +9,9 @@
     "lint": "eslint",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test .qa --project=chromium --reporter=line",
-    "test:e2e:all": "playwright test .qa --reporter=line",
+    "test:e2e": "playwright test .qa/production-smoke.spec.ts --project=chromium --reporter=line",
+    "test:e2e:mutating": "ALLOW_MUTATING_E2E=true playwright test .qa/mutating-journeys.spec.ts --project=chromium --reporter=line",
+    "test:e2e:all": "ALLOW_MUTATING_E2E=true playwright test .qa --reporter=line",
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {

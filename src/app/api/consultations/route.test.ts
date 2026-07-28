@@ -1,12 +1,17 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const sql = vi.fn();
 const sendConsultationNotification = vi.hoisted(() => vi.fn());
+const ratelimit = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/db", () => ({
   ensureConsultationsTable: vi.fn().mockResolvedValue(undefined),
   getDb: vi.fn(() => sql),
 }));
 vi.mock("@/lib/email", () => ({ sendConsultationNotification }));
+vi.mock("@/lib/ratelimit", () => ({
+  getClientIp: vi.fn(() => "127.0.0.1"),
+  ratelimit,
+}));
 
 import { POST } from "./route";
 
@@ -27,10 +32,20 @@ function requestFor(body: unknown) {
 }
 
 describe("POST /api/consultations", () => {
+  beforeEach(() => {
+    sendConsultationNotification.mockReset();
+    sendConsultationNotification.mockResolvedValue({ status: "sent" });
+    ratelimit.mockReset();
+    ratelimit.mockResolvedValue({
+      available: true,
+      blocked: false,
+      remaining: 4,
+      reset: Date.now() + 60_000,
+    });
+  });
+
   afterEach(() => {
     vi.restoreAllMocks();
-    sendConsultationNotification.mockReset();
-    sendConsultationNotification.mockResolvedValue(undefined);
   });
 
   it("accepts valid consultation requests and returns a private reference", async () => {

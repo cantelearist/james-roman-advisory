@@ -16,10 +16,20 @@ Updated 2026-07-26 after the engagement-scoped authorization and staff MFA migra
 - Engagement events and documents carry an explicit audience. Clients receive only published `client` resources. Contractors receive only `contractor` resources and published `client` resources.
 - Invitations are one-time, hashed tokens stored in `auth_invitations` and expire after seven days.
 - Password recovery uses single-use, hashed tokens that expire after 30 minutes. Successful recovery revokes every existing session and pending login challenge.
+- Post-authentication navigation accepts only normalized same-origin application
+  paths; unsafe redirect targets fall back to `/portal`.
+- Browser-originated API mutations require a trusted server-configured origin.
+  Stripe webhooks, authenticated cron requests, and the keyed seed route remain
+  explicit server-to-server exceptions.
+- Authentication, recovery, invitation, seed, and consultation write routes
+  fail closed when distributed rate limiting is unavailable.
 - Super Admin, Admin, and Contractor accounts must complete RFC 6238 authenticator verification before a full session is issued. The pre-authentication challenge expires after ten minutes.
 - TOTP secrets use AES-256-GCM encryption with `MFA_ENCRYPTION_KEY`; one-use recovery codes are stored only as SHA-256 hashes.
 - New account registration requires an invitation or a pre-provisioned passwordless account.
 - Role, profile, membership, suspension, and invitation changes are written to `access_audit_events`.
+- Administrative access, invitation, automation, and workspace-setting
+  mutations commit their mandatory audit record in the same database
+  transaction.
 
 ## Protected surfaces
 
@@ -36,6 +46,11 @@ authority, suspend accounts, or assign and revoke Engagement Memberships.
 
 - `DATABASE_URL`
 - `RESEND_API_KEY` for consultation and invitation email
+- `SITE_URL` as the private canonical application origin used for request
+  validation and secure email links
+- `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN`, or the Vercel
+  Marketplace aliases `KV_REST_API_URL` and `KV_REST_API_TOKEN`, for mandatory
+  distributed rate limiting on sensitive write routes
 - `BLOB_READ_WRITE_TOKEN` for vault storage
 - `SEED_KEY` and `SEED_PASSWORD` only when the controlled seed endpoint is needed
 - `STAGING_PASSWORD` for the staging host gate
@@ -45,7 +60,6 @@ authority, suspend accounts, or assign and revoke Engagement Memberships.
 
 - Complete live authenticator enrollment for every production staff identity before broad client onboarding.
 - Define a documented, identity-verified Super Admin procedure for lost-factor recovery.
-- Configure Upstash variables to enable rate limiting; the code currently fails open when absent.
 - Reconcile existing client records whose former provider identifiers cannot be mapped automatically.
 - Move the authorization policy into database row-level security before granting direct database access to any secondary application or reporting tool.
 - Add integration coverage against a disposable Postgres branch for every role/capability/scope combination.

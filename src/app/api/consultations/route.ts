@@ -17,7 +17,17 @@ export async function POST(request: Request) {
   // Rate limit: 5 submissions per hour per IP (public endpoint — no auth required)
   const ip = getClientIp(request);
   const rl = await ratelimit("consultation", ip);
-  if (rl?.blocked) {
+  if (!rl.available) {
+    console.error("ratelimit.unavailable", {
+      endpoint: "consultation",
+      reason: rl.reason,
+    });
+    return NextResponse.json(
+      { message: "The request service is temporarily unavailable. Please try again." },
+      { status: 503 },
+    );
+  }
+  if (rl.blocked) {
     return NextResponse.json(
       { message: "Too many requests. Please try again later." },
       { status: 429 }

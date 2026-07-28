@@ -1,5 +1,7 @@
 import { Resend } from "resend";
 
+import { canonicalSiteOrigin } from "@/lib/site-url";
+
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const FROM = "James Roman Advisory <roman@jamesroman.la>";
@@ -151,13 +153,9 @@ export async function sendPasswordRecovery(data: {
   token: string;
 }): Promise<void> {
   if (!process.env.RESEND_API_KEY) {
-    console.warn("email.skipped", "RESEND_API_KEY not set — password recovery not sent");
-    return;
+    throw new Error("Password recovery email is not configured");
   }
-  const siteUrl = (
-    process.env.NEXT_PUBLIC_SITE_URL ??
-    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "https://www.jamesroman.la")
-  ).replace(/\/$/, "");
+  const siteUrl = canonicalSiteOrigin();
   const recoveryUrl = `${siteUrl}/reset-password?token=${encodeURIComponent(data.token)}`;
   const resend = new Resend(process.env.RESEND_API_KEY);
   const { error } = await resend.emails.send({
@@ -182,13 +180,13 @@ export async function sendPasswordRecovery(data: {
 
 export async function sendConsultationNotification(
   data: ConsultationNotificationData,
-): Promise<void> {
+): Promise<{ status: "sent" | "failed" | "skipped"; error?: string }> {
   if (!process.env.RESEND_API_KEY) {
     console.warn(
       "email.skipped",
       "RESEND_API_KEY not set — consultation notification not sent",
     );
-    return;
+    return { status: "skipped", error: "email_not_configured" };
   }
 
   // Lazy-init so missing key never throws at module load time
@@ -211,17 +209,22 @@ export async function sendConsultationNotification(
     });
 
     if (error) {
-      // Log but don't throw — email failure must not break the submission
       console.error("email.failed", { referenceId: data.referenceId, error });
+      return { status: "failed", error: error.name };
     } else {
       console.info("email.sent", {
         referenceId: data.referenceId,
         to: notificationEmail,
       });
+      return { status: "sent" };
     }
   } catch (error) {
     // Network/provider exceptions must also be contained so the consultation
     // record remains successful even when notification delivery is unavailable.
     console.error("email.failed", { referenceId: data.referenceId, error });
+    return {
+      status: "failed",
+      error: error instanceof Error ? error.name : "provider_error",
+    };
   }
 }
