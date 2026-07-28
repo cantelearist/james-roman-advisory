@@ -9,6 +9,7 @@
     "lint": "eslint",
     "audit:production": "npm audit --omit=dev --audit-level=moderate",
     "db:migrate:disposable": "node --import tsx scripts/migrate-disposable-database.ts",
+    "db:migrate:production": "node --import tsx scripts/migrate-production-database.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test .qa/production-smoke.spec.ts --project=chromium --reporter=line",

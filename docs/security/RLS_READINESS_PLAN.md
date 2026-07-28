@@ -97,6 +97,11 @@ means the final Stage 1 security gate is not yet met.
 
 Stage 1B must use this order:
 
+The protected preflight/apply workflow and its fail-closed environment
+validation are now prepared. They are inactive until the GitHub environment
+has required reviewer approval, a `main`-only deployment rule, and the
+dedicated owner migration URL. No credential is included in the repository.
+
 1. Add an owner-only migration URL to a protected GitHub environment with
    required reviewer approval. Do not expose it to pull requests, previews, or
    the application runtime.
