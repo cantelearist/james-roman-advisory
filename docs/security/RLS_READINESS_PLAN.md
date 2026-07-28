@@ -78,6 +78,38 @@ This stage changes no production query or policy.
 
 ### Stage 1 — remove runtime ownership work
 
+Stage 1A is now implemented as an additive compatibility step:
+
+- all 37 domain tables are assigned exactly once to six ordered migration
+  versions (the migration ledger is the 38th table);
+- the disposable database workflow applies those versions through an explicit,
+  branch-attested migration command before any integration test;
+- integration tests only assert the required versions and no longer bootstrap
+  the application schema themselves;
+- a read-only assertion produces a clear missing-version error for the later
+  runtime cutover.
+
+Production is deliberately unchanged in Stage 1A. The existing request-time
+ensure functions remain as a temporary compatibility facade and still hold
+DDL. The new `users` and `consultations` ledger versions are written only by
+the explicit migration runner, not by ordinary application requests. This
+means the final Stage 1 security gate is not yet met.
+
+Stage 1B must use this order:
+
+1. Add an owner-only migration URL to a protected GitHub environment with
+   required reviewer approval. Do not expose it to pull requests, previews, or
+   the application runtime.
+2. Run the six migrations against production and verify the complete ledger.
+3. Deploy a compatibility release that reads the ledger while retaining the
+   old facade for rollback.
+4. Replace every request-time ensure function with the read-only required
+   version assertion.
+5. Prove that the runtime credential cannot `CREATE` or `ALTER`, then remove
+   the owner URL from Vercel runtime configuration.
+
+Only after those checks should Stage 1 be marked complete.
+
 1. Replace request-time schema bootstrap with versioned migrations.
 2. Keep the existing owner credential out of the application runtime.
 3. Run migrations only from a protected, explicit deployment job.
