@@ -6,10 +6,11 @@ import {
   setMfaChallengeCookie,
   setSessionCookie,
 } from "@/lib/auth";
-import { ensureAuthTables, getDb } from "@/lib/db";
+import { getDb } from "@/lib/db";
 import { hashAuthToken } from "@/lib/mfa";
 import { verifyPassword } from "@/lib/password";
 import { getClientIp, ratelimit } from "@/lib/ratelimit";
+import { assertRequiredSchemaVersions } from "@/lib/schema-readiness";
 
 export const runtime = "nodejs";
 
@@ -45,7 +46,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Email and password are required" }, { status: 400 });
   }
 
-  await ensureAuthTables();
+  await assertRequiredSchemaVersions();
   const sql = getDb();
   const rows = await sql`
     SELECT id, name, email, role, password_hash, status

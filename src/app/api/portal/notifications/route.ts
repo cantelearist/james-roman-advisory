@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { getAuthContext } from "@/lib/auth";
-import { ensureEngagementOperationsTables, getDb } from "@/lib/db";
+import { getDb } from "@/lib/db";
+import { assertRequiredSchemaVersions } from "@/lib/schema-readiness";
 
 export const runtime = "nodejs";
 
@@ -14,7 +15,7 @@ const updateSchema = z.union([
 export async function GET() {
   const context = await getAuthContext();
   if (!context) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  await ensureEngagementOperationsTables();
+  await assertRequiredSchemaVersions();
   const sql = getDb();
   const notifications = await sql`
     SELECT id, matter_id, event_type, title, body, href, read_at, created_at
@@ -31,7 +32,7 @@ export async function PATCH(request: Request) {
   if (!context) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const parsed = updateSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Invalid notification update" }, { status: 400 });
-  await ensureEngagementOperationsTables();
+  await assertRequiredSchemaVersions();
   const sql = getDb();
   if ("all" in parsed.data) {
     await sql`

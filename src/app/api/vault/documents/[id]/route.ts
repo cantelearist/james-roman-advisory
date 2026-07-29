@@ -6,7 +6,7 @@
  */
 import { NextResponse } from "next/server";
 
-import { ensureEngagementOperationsTables, getDb, logFileAccess } from "@/lib/db";
+import { getDb, logFileAccess } from "@/lib/db";
 import { deleteFromVault, downloadFromVault } from "@/lib/vault";
 import {
   authorizeCapability,
@@ -15,6 +15,7 @@ import {
   hasCapability,
 } from "@/lib/access-control";
 import { getAuthContext } from "@/lib/auth";
+import { assertRequiredSchemaVersions } from "@/lib/schema-readiness";
 
 export const runtime = "nodejs";
 
@@ -34,7 +35,7 @@ export async function GET(request: Request, routeContext: RouteContext) {
 
     const { id } = await routeContext.params;
 
-    await ensureEngagementOperationsTables();
+    await assertRequiredSchemaVersions();
     const sql = getDb();
 
     // Resolve client, then verify ownership
@@ -128,7 +129,7 @@ export async function DELETE(request: Request, routeContext: RouteContext) {
 
     const { id } = await routeContext.params;
 
-    await ensureEngagementOperationsTables();
+    await assertRequiredSchemaVersions();
     const sql = getDb();
 
     const docRows = await sql`
@@ -212,7 +213,7 @@ export async function PATCH(request: Request, routeContext: RouteContext) {
       return NextResponse.json({ error: "No document changes were provided" }, { status: 400 });
     }
 
-    await ensureEngagementOperationsTables();
+    await assertRequiredSchemaVersions();
     const sql = getDb();
     const rows = await sql`
       SELECT id, matter_id, uploaded_by

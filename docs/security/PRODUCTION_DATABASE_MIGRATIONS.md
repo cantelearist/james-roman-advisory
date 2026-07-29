@@ -1,15 +1,18 @@
 # Protected Production Database Migrations
 
-Status: prepared but inactive. No production migration credential is stored by
-this change, and no production migration runs automatically.
+Status: active, protected, and manually dispatched. Production reports all six
+required migration versions. No migration runs automatically.
+
+The initial production apply completed on 2026-07-28 at
+`239ebffad6a776c7dfed308bec2ace4a1afca84a`. An independent post-apply
+preflight reported `6/6` required versions and no pending migration.
 
 ## Security boundary
 
 The only supported production migration surface is the manually dispatched
 `Protected production database migration` GitHub Actions workflow.
 
-Before adding its credential, configure the
-`production-database-migrations` GitHub environment with:
+The `production-database-migrations` GitHub environment is configured with:
 
 - required reviewer approval;
 - deployment branches restricted to `main`;
@@ -38,8 +41,8 @@ is not used by the application.
 4. If the pending set is expected, run `apply` against the same `main` SHA with
    the phrase `migrate james-roman-advisory production`.
 5. Confirm all six required versions are present.
-6. Deploy the compatibility release and run production smoke checks before
-   changing any request-time ensure call.
+6. For a migration required by a new application release, deploy application
+   code only after the apply output confirms the complete required ledger.
 
 The runner rejects non-manual events, non-main workflow sources, other
 repositories, SHA drift, missing approval flags, a mismatched Neon hostname,
@@ -47,8 +50,10 @@ the ordinary `DATABASE_URL`, and incorrect confirmation phrases.
 
 ## Rollback
 
-This stage installs only idempotent historical schema and ledger entries. It
-does not enable RLS, change roles, or remove runtime compatibility.
+This workflow installs only reviewed schema and ledger entries. It does not
+enable RLS or change the Vercel runtime credential. Ordinary request paths use
+the read-only required-version assertion; only the protected migration runner
+may invoke the DDL compatibility facades.
 
 If application behavior changes unexpectedly:
 

@@ -5,7 +5,8 @@ import {
   hasCapability,
 } from "@/lib/access-control";
 import { getAuthContext } from "@/lib/auth";
-import { ensureAccessControlTables, getDb } from "@/lib/db";
+import { getDb } from "@/lib/db";
+import { assertRequiredSchemaVersions } from "@/lib/schema-readiness";
 
 export const runtime = "nodejs";
 
@@ -22,7 +23,7 @@ export async function GET() {
   ) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
-  await ensureAccessControlTables();
+  await assertRequiredSchemaVersions();
   const sql = getDb();
   const people = await sql`
     SELECT u.id, u.name, u.email, u.role,

@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { getDb, ensureEngagementOperationsTables, logMatterEvent } from "@/lib/db";
+import { getDb, logMatterEvent } from "@/lib/db";
 import {
   authorizeCapability,
   getPortalAccessSummary,
   hasCapability,
 } from "@/lib/access-control";
 import { getAuthContext } from "@/lib/auth";
+import { assertRequiredSchemaVersions } from "@/lib/schema-readiness";
 
 const createMatterSchema = z.object({
   clientId: z.string().trim().min(1),
@@ -40,7 +41,7 @@ export async function GET(req: Request) {
   const canViewMessages = hasCapability(access, "messages.view");
   const canViewFinance = hasCapability(access, "finance.view");
 
-  await ensureEngagementOperationsTables();
+  await assertRequiredSchemaVersions();
   const sql = getDb();
 
   let matters;
@@ -200,7 +201,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Client not found" }, { status: 404 });
   }
 
-  await ensureEngagementOperationsTables();
+  await assertRequiredSchemaVersions();
   const sql = getDb();
   const clients = await sql`SELECT id FROM clients WHERE id = ${clientId} LIMIT 1`;
   if (clients.length === 0) return NextResponse.json({ error: "Client not found" }, { status: 404 });

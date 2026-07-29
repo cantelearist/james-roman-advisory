@@ -78,7 +78,7 @@ This stage changes no production query or policy.
 
 ### Stage 1 — remove runtime ownership work
 
-Stage 1A is now implemented as an additive compatibility step:
+Stage 1A established the additive migration compatibility layer:
 
 - all 37 domain tables are assigned exactly once to six ordered migration
   versions (the migration ledger is the 38th table);
@@ -89,40 +89,38 @@ Stage 1A is now implemented as an additive compatibility step:
 - a read-only assertion produces a clear missing-version error for the later
   runtime cutover.
 
-Production is deliberately unchanged in Stage 1A. The existing request-time
-ensure functions remain as a temporary compatibility facade and still hold
-DDL. The new `users` and `consultations` ledger versions are written only by
-the explicit migration runner, not by ordinary application requests. This
-means the final Stage 1 security gate is not yet met.
+Stage 1B migration and runtime-cutover status:
 
-Stage 1B must use this order:
+- the protected GitHub environment requires reviewer approval, permits only
+  `main`, disables administrator bypass, and contains the dedicated owner
+  migration credential and attested Neon hostname;
+- production was migrated at
+  `239ebffad6a776c7dfed308bec2ace4a1afca84a` on 2026-07-28;
+- an independent post-apply preflight reported all six required versions and
+  no pending migration;
+- ordinary request paths now call the cached, read-only required-version
+  assertion instead of any schema ensure facade;
+- a source-level invariant rejects future request code that imports or calls
+  the DDL compatibility facades;
+- the DDL implementations remain available only to the protected migration
+  runner.
 
-The protected preflight/apply workflow and its fail-closed environment
-validation are now prepared. They are inactive until the GitHub environment
-has required reviewer approval, a `main`-only deployment rule, and the
-dedicated owner migration URL. No credential is included in the repository.
+The final Stage 1 credential boundary is still pending:
 
-1. Add an owner-only migration URL to a protected GitHub environment with
-   required reviewer approval. Do not expose it to pull requests, previews, or
-   the application runtime.
-2. Run the six migrations against production and verify the complete ledger.
-3. Deploy a compatibility release that reads the ledger while retaining the
-   old facade for rollback.
-4. Replace every request-time ensure function with the read-only required
-   version assertion.
-5. Prove that the runtime credential cannot `CREATE` or `ALTER`, then remove
-   the owner URL from Vercel runtime configuration.
+1. create or identify a least-privilege runtime role that cannot `CREATE`,
+   `ALTER`, manage roles, own application tables, or bypass RLS;
+2. verify the complete application access matrix with that credential on a
+   disposable branch;
+3. replace the owner-scoped Vercel runtime URL with the verified runtime URL;
+4. prove the live runtime credential cannot perform DDL;
+5. retain the owner URL only in the protected GitHub migration environment.
 
-Only after those checks should Stage 1 be marked complete.
+Only after those checks should Stage 1 be marked complete. Production RLS must
+remain disabled throughout this stage.
 
-1. Replace request-time schema bootstrap with versioned migrations.
-2. Keep the existing owner credential out of the application runtime.
-3. Run migrations only from a protected, explicit deployment job.
-4. Fail application startup clearly when the required schema version is
-   absent; never grant runtime `CREATE`, `ALTER`, role-management, or ownership.
-
-Rollback: redeploy the previous application version. No policy or credential
-cutover occurs in this stage.
+Rollback for the request-time cutover: redeploy the previous application
+version. The migration ledger remains intact. No RLS policy or runtime
+credential cutover occurs in this release.
 
 ### Stage 2 — transactional request context
 

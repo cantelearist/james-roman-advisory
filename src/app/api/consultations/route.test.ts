@@ -4,8 +4,10 @@ const sql = vi.fn();
 const sendConsultationNotification = vi.hoisted(() => vi.fn());
 const ratelimit = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/db", () => ({
-  ensureConsultationsTable: vi.fn().mockResolvedValue(undefined),
   getDb: vi.fn(() => sql),
+}));
+vi.mock("@/lib/schema-readiness", () => ({
+  assertRequiredSchemaVersions: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock("@/lib/email", () => ({ sendConsultationNotification }));
 vi.mock("@/lib/ratelimit", () => ({

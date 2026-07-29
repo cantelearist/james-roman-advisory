@@ -2,8 +2,9 @@ import { createHash, randomBytes } from "node:crypto";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
-import { ensureAuthTables, getDb } from "@/lib/db";
+import { getDb } from "@/lib/db";
 import type { UserRole } from "@/lib/data-model";
+import { assertRequiredSchemaVersions } from "@/lib/schema-readiness";
 
 export type Role = UserRole;
 export type AuthUser = { id: string; name: string; email: string; role: Role };
@@ -53,7 +54,7 @@ function toAuthUser(row: Record<string, unknown>): AuthUser {
 }
 
 export async function createSession(userId: string): Promise<{ token: string; expiresAt: Date }> {
-  await ensureAuthTables();
+  await assertRequiredSchemaVersions();
   const token = randomBytes(32).toString("base64url");
   const expiresAt = new Date(Date.now() + SESSION_TTL_SECONDS * 1000);
   const sql = getDb();
@@ -88,7 +89,7 @@ export async function getAuthContext(): Promise<AuthContext | null> {
   const token = (await cookies()).get(SESSION_COOKIE)?.value;
   if (!token) return null;
 
-  await ensureAuthTables();
+  await assertRequiredSchemaVersions();
   const sql = getDb();
   const rows = await sql`
     SELECT u.id, u.name, u.email, u.role
@@ -107,7 +108,7 @@ export async function getAuthContext(): Promise<AuthContext | null> {
 export async function revokeCurrentSession(): Promise<void> {
   const token = (await cookies()).get(SESSION_COOKIE)?.value;
   if (!token) return;
-  await ensureAuthTables();
+  await assertRequiredSchemaVersions();
   const sql = getDb();
   await sql`DELETE FROM auth_sessions WHERE token_hash = ${hashSessionToken(token)}`;
 }

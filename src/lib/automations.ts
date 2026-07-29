@@ -1,5 +1,6 @@
-import { ensureEngagementOperationsTables, getDb, logMatterEvent } from "@/lib/db";
+import { getDb, logMatterEvent } from "@/lib/db";
 import { notifyEngagementMembers } from "@/lib/notifications";
+import { assertRequiredSchemaVersions } from "@/lib/schema-readiness";
 
 type AutomationEvent = {
   triggerType: "client_message_received" | "document_review_requested" | "stage_advanced";
@@ -19,7 +20,7 @@ function dateAfter(days: number): string {
 
 export async function triggerPortalAutomations(event: AutomationEvent): Promise<void> {
   try {
-    await ensureEngagementOperationsTables();
+    await assertRequiredSchemaVersions();
     const sql = getDb();
     const automations = await sql`
       SELECT id, owner_user_id, configuration
@@ -107,7 +108,7 @@ export async function runScheduledPortalAutomations(): Promise<{
   invoiceReminders: number;
   failures: number;
 }> {
-  await ensureEngagementOperationsTables();
+  await assertRequiredSchemaVersions();
   const sql = getDb();
   let overdueTaskAlerts = 0;
   let invoiceReminders = 0;

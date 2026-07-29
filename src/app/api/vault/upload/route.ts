@@ -23,7 +23,7 @@ import {
   hasCapability,
 } from "@/lib/access-control";
 import { getAuthContext } from "@/lib/auth";
-import { ensureEngagementOperationsTables, getDb, logFileAccess } from "@/lib/db";
+import { getDb, logFileAccess } from "@/lib/db";
 import {
   ALLOWED_MIME_TYPES,
   MAX_UPLOAD_BYTES,
@@ -34,6 +34,7 @@ import {
 import { notifyEngagementMembers } from "@/lib/notifications";
 import { triggerPortalAutomations } from "@/lib/automations";
 import type { ResourceAudience } from "@/lib/data-model";
+import { assertRequiredSchemaVersions } from "@/lib/schema-readiness";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -78,7 +79,7 @@ export async function POST(request: Request) {
     }
 
     // ── Resolve client record ────────────────────────────────────────────────
-    await ensureEngagementOperationsTables();
+    await assertRequiredSchemaVersions();
     const sql = getDb();
 
     if (!matterId) {

@@ -1,8 +1,9 @@
 import { Resend } from "resend";
 
 import type { ResourceAudience } from "@/lib/data-model";
-import { ensureEngagementOperationsTables, getDb } from "@/lib/db";
+import { getDb } from "@/lib/db";
 import { canonicalSiteOrigin } from "@/lib/site-url";
+import { assertRequiredSchemaVersions } from "@/lib/schema-readiness";
 
 const FROM = "James Roman Advisory <roman@jamesroman.la>";
 
@@ -47,7 +48,7 @@ export type EngagementNotificationResult = {
 async function deliverEngagementNotifications(
   options: EngagementNotificationOptions,
 ): Promise<EngagementNotificationResult> {
-  await ensureEngagementOperationsTables();
+  await assertRequiredSchemaVersions();
   const sql = getDb();
   const settingsRows = await sql`SELECT value FROM portal_settings WHERE key = 'workspace' LIMIT 1`;
   const settings = settingsRows[0]?.value && typeof settingsRows[0].value === "object"

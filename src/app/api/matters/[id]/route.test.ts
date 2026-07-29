@@ -13,9 +13,11 @@ const dbMocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/db", () => ({
-  ensureEngagementOperationsTables: vi.fn().mockResolvedValue(undefined),
   getDb: vi.fn(() => sql),
   logMatterEvent: dbMocks.logMatterEvent,
+}));
+vi.mock("@/lib/schema-readiness", () => ({
+  assertRequiredSchemaVersions: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock("@/lib/auth", () => ({
   getAuthContext: authMocks.getAuthContext,

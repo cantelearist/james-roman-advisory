@@ -7,8 +7,9 @@ import {
   hasCapability,
 } from "@/lib/access-control";
 import { getAuthContext } from "@/lib/auth";
-import { ensureEngagementOperationsTables, getDb } from "@/lib/db";
+import { getDb } from "@/lib/db";
 import { notifyEngagementMembers } from "@/lib/notifications";
+import { assertRequiredSchemaVersions } from "@/lib/schema-readiness";
 
 export const runtime = "nodejs";
 
@@ -40,7 +41,7 @@ export async function GET(request: Request) {
   if (matterId && !(await authorizeCapability(context, access, "finance.view", { matterId }))) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
-  await ensureEngagementOperationsTables();
+  await assertRequiredSchemaVersions();
   const sql = getDb();
   const global = context.role === "super_admin" || (context.role === "admin" && access.scope === "global");
   const invoices = await sql`
@@ -97,7 +98,7 @@ export async function POST(request: Request) {
   if (!(await authorizeCapability(context, access, "finance.manage", { matterId: parsed.data.matterId }))) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
-  await ensureEngagementOperationsTables();
+  await assertRequiredSchemaVersions();
   const sql = getDb();
   const matter = await sql`SELECT id, title FROM matters WHERE id = ${parsed.data.matterId} LIMIT 1`;
   if (matter.length === 0) return NextResponse.json({ error: "Not found" }, { status: 404 });

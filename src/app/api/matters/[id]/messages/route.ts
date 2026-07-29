@@ -8,10 +8,11 @@ import {
   hasCapability,
 } from "@/lib/access-control";
 import { getAuthContext } from "@/lib/auth";
-import { ensureEngagementOperationsTables, getDb } from "@/lib/db";
+import { getDb } from "@/lib/db";
 import type { ResourceAudience } from "@/lib/data-model";
 import { notifyEngagementMembers } from "@/lib/notifications";
 import { triggerPortalAutomations } from "@/lib/automations";
+import { assertRequiredSchemaVersions } from "@/lib/schema-readiness";
 
 export const runtime = "nodejs";
 
@@ -33,7 +34,7 @@ export async function GET(
   if (!(await authorizeCapability(context, access, "messages.view", { matterId: id }))) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
-  await ensureEngagementOperationsTables();
+  await assertRequiredSchemaVersions();
   const sql = getDb();
   const matter = await sql`SELECT id FROM matters WHERE id = ${id} LIMIT 1`;
   if (matter.length === 0) return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -92,7 +93,7 @@ export async function POST(
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  await ensureEngagementOperationsTables();
+  await assertRequiredSchemaVersions();
   const sql = getDb();
   const matterRows = await sql`SELECT id, title FROM matters WHERE id = ${id} LIMIT 1`;
   if (matterRows.length === 0) return NextResponse.json({ error: "Not found" }, { status: 404 });

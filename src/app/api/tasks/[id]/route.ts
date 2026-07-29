@@ -7,7 +7,8 @@ import {
   hasCapability,
 } from "@/lib/access-control";
 import { getAuthContext } from "@/lib/auth";
-import { ensureEngagementOperationsTables, getDb, logMatterEvent } from "@/lib/db";
+import { getDb, logMatterEvent } from "@/lib/db";
+import { assertRequiredSchemaVersions } from "@/lib/schema-readiness";
 
 export const runtime = "nodejs";
 
@@ -30,7 +31,7 @@ export async function PATCH(
   const { id } = await params;
   const parsed = updateSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Invalid task update" }, { status: 400 });
-  await ensureEngagementOperationsTables();
+  await assertRequiredSchemaVersions();
   const sql = getDb();
   const currentRows = await sql`SELECT * FROM engagement_tasks WHERE id = ${id} LIMIT 1`;
   const current = currentRows[0];

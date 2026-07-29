@@ -14,8 +14,9 @@ import {
   hasCapability,
   logAccessAudit,
 } from "@/lib/access-control";
-import { ensureEngagementOperationsTables, getDb } from "@/lib/db";
+import { getDb } from "@/lib/db";
 import { getAuthContext } from "@/lib/auth";
+import { assertRequiredSchemaVersions } from "@/lib/schema-readiness";
 
 export const runtime = "nodejs";
 
@@ -31,7 +32,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    await ensureEngagementOperationsTables();
+    await assertRequiredSchemaVersions();
     const sql = getDb();
 
     const url = new URL(request.url);

@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
-import { getDb, ensureVaultTables, logMatterEvent } from "@/lib/db";
+import { getDb, logMatterEvent } from "@/lib/db";
 import {
   authorizeCapability,
   getPortalAccessSummary,
 } from "@/lib/access-control";
 import { getAuthContext } from "@/lib/auth";
+import { assertRequiredSchemaVersions } from "@/lib/schema-readiness";
 
 export async function POST(
   req: Request,
@@ -26,7 +27,7 @@ export async function POST(
     return NextResponse.json({ error: "content is required" }, { status: 400 });
   }
 
-  await ensureVaultTables();
+  await assertRequiredSchemaVersions();
   const sql = getDb();
 
   const [matter] = await sql`SELECT id FROM matters WHERE id = ${id}`;

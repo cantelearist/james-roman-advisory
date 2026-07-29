@@ -5,7 +5,8 @@ import {
   hasCapability,
 } from "@/lib/access-control";
 import { getAuthContext } from "@/lib/auth";
-import { ensureEngagementOperationsTables, getDb } from "@/lib/db";
+import { getDb } from "@/lib/db";
+import { assertRequiredSchemaVersions } from "@/lib/schema-readiness";
 
 export const runtime = "nodejs";
 
@@ -24,7 +25,7 @@ export async function GET(request: Request) {
   if (query.length < 2) return NextResponse.json({ results: [] });
 
   const access = await getPortalAccessSummary(context);
-  await ensureEngagementOperationsTables();
+  await assertRequiredSchemaVersions();
   const sql = getDb();
   const pattern = `%${query.slice(0, 120)}%`;
   const global = context.role === "super_admin"

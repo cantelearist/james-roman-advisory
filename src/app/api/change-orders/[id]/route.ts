@@ -3,8 +3,9 @@ import { z } from "zod";
 
 import { authorizeCapability, getPortalAccessSummary } from "@/lib/access-control";
 import { getAuthContext } from "@/lib/auth";
-import { ensureEngagementOperationsTables, getDb } from "@/lib/db";
+import { getDb } from "@/lib/db";
 import { notifyEngagementMembers } from "@/lib/notifications";
+import { assertRequiredSchemaVersions } from "@/lib/schema-readiness";
 
 const schema = z.object({ action: z.enum(["issue", "accept", "reject", "void"]) });
 
@@ -21,7 +22,7 @@ export async function PATCH(
   const parsed = schema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Invalid action." }, { status: 400 });
   const { id } = await params;
-  await ensureEngagementOperationsTables();
+  await assertRequiredSchemaVersions();
   const sql = getDb();
   const rows = await sql`SELECT * FROM change_orders WHERE id = ${id} LIMIT 1`;
   const changeOrder = rows[0] as Record<string, unknown> | undefined;

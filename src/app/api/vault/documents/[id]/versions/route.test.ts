@@ -13,9 +13,11 @@ vi.mock("@/lib/auth", () => ({
   getAuthContext: authMocks.getAuthContext,
 }));
 vi.mock("@/lib/db", () => ({
-  ensureEngagementOperationsTables: vi.fn().mockResolvedValue(undefined),
   getDb: vi.fn(() => sql),
   logFileAccess: vi.fn(),
+}));
+vi.mock("@/lib/schema-readiness", () => ({
+  assertRequiredSchemaVersions: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock("@/lib/access-control", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/access-control")>();

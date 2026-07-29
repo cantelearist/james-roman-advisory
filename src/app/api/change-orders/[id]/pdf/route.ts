@@ -2,8 +2,9 @@ import { NextResponse } from "next/server";
 
 import { authorizeCapability, getPortalAccessSummary } from "@/lib/access-control";
 import { getAuthContext } from "@/lib/auth";
-import { ensureEngagementOperationsTables, getDb } from "@/lib/db";
+import { getDb } from "@/lib/db";
 import { renderRcaPdf } from "@/lib/pdf";
+import { assertRequiredSchemaVersions } from "@/lib/schema-readiness";
 
 export async function GET(
   _request: Request,
@@ -12,7 +13,7 @@ export async function GET(
   const context = await getAuthContext();
   if (!context) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { id } = await params;
-  await ensureEngagementOperationsTables();
+  await assertRequiredSchemaVersions();
   const sql = getDb();
   const rows = await sql`
     SELECT co.*, m.title AS matter_title, c.name AS client_name,

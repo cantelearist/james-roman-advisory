@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
-import { getDb, ensureVaultTables } from "@/lib/db";
+import { getDb } from "@/lib/db";
 import {
   authorizeCapability,
   getPortalAccessSummary,
 } from "@/lib/access-control";
 import { getAuthContext } from "@/lib/auth";
+import { assertRequiredSchemaVersions } from "@/lib/schema-readiness";
 
 export async function POST(req: Request) {
   const context = await getAuthContext();
@@ -20,7 +21,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  await ensureVaultTables();
+  await assertRequiredSchemaVersions();
   const sql = getDb();
   const id = crypto.randomUUID();
 
@@ -52,7 +53,7 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  await ensureVaultTables();
+  await assertRequiredSchemaVersions();
   const sql = getDb();
 
   const properties = await sql`

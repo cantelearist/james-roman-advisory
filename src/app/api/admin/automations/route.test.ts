@@ -19,9 +19,10 @@ vi.mock("@/lib/auth", async (importOriginal) => {
   return { ...actual, getAuthContext: authMocks.getAuthContext };
 });
 vi.mock("@/lib/db", () => ({
-  ensureEngagementOperationsTables: vi.fn(),
-  ensureAccessControlTables: vi.fn(),
   getDb: vi.fn(() => dbMocks.sql),
+}));
+vi.mock("@/lib/schema-readiness", () => ({
+  assertRequiredSchemaVersions: vi.fn().mockResolvedValue(undefined),
 }));
 
 import { GET, PATCH } from "./route";

@@ -10,7 +10,8 @@ import {
   type ResourceAudience,
   type UserRole,
 } from "@/lib/data-model";
-import { ensureAccessControlTables, getDb } from "@/lib/db";
+import { getDb } from "@/lib/db";
+import { assertRequiredSchemaVersions } from "@/lib/schema-readiness";
 
 const CLIENT_CAPABILITIES: readonly Capability[] = [
   "clients.view",
@@ -84,7 +85,7 @@ export function canReceiveAudience(
 }
 
 export async function getPortalAccessSummary(context: AuthContext): Promise<PortalAccessSummary> {
-  await ensureAccessControlTables();
+  await assertRequiredSchemaVersions();
   if (context.role === "super_admin") {
     return {
       role: context.role,
@@ -145,7 +146,7 @@ export async function hasActiveEngagementMembership(
   userId: string,
   matterId: string,
 ): Promise<boolean> {
-  await ensureAccessControlTables();
+  await assertRequiredSchemaVersions();
   const sql = getDb();
   const rows = await sql`
     SELECT 1
@@ -163,7 +164,7 @@ export async function hasActiveClientMembership(
   userId: string,
   clientId: string,
 ): Promise<boolean> {
-  await ensureAccessControlTables();
+  await assertRequiredSchemaVersions();
   const sql = getDb();
   const rows = await sql`
     SELECT 1
@@ -246,7 +247,7 @@ export async function logAccessAudit(
   options: AccessAuditOptions,
 ): Promise<void> {
   try {
-    await ensureAccessControlTables();
+    await assertRequiredSchemaVersions();
     const sql = getDb();
     await accessAuditQuery(sql, options);
   } catch (error) {
