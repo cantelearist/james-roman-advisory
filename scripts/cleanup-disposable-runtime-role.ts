@@ -25,6 +25,7 @@ async function main() {
   }
 
   await sql.query(`DROP OWNED BY ${quotedRoleName}`);
+  await sql.query(`REVOKE ${quotedRoleName} FROM CURRENT_USER`);
   await sql.query(`DROP ROLE ${quotedRoleName}`);
   console.log(`Removed the disposable runtime login for ${config.branchName}.`);
 }
