@@ -35,10 +35,10 @@ The supported integration workflow:
 11. Deletes both temporary roles and the fixture table, then deletes the branch
    even when tests fail. Neon expiry remains a second cleanup mechanism.
 
-The migration owner receives administrative membership in the disposable
-runtime role only so PostgreSQL permits `DROP OWNED` during cleanup. The
-runtime role is `NOINHERIT`, receives no membership in the owner role, and
-cannot acquire owner privileges.
+The migration owner receives membership in the disposable runtime role only so
+PostgreSQL permits `DROP OWNED` during cleanup. The runtime role is
+`NOINHERIT`, receives no membership in the owner role, and cannot acquire owner
+privileges.
 
 The runtime guard rejects missing attestations, production execution, ordinary
 data-bearing branches, endpoint mismatches, expired or long-lived branches, and

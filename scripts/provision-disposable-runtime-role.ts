@@ -65,10 +65,8 @@ async function main() {
   );
   // PostgreSQL requires membership in the target role before a non-superuser
   // migration owner can run DROP OWNED during cleanup. NOINHERIT keeps this
-  // administrative membership from affecting either role's runtime powers.
-  await sql.query(
-    `GRANT ${quotedRoleName} TO CURRENT_USER WITH ADMIN OPTION`,
-  );
+  // cleanup membership from affecting either role's runtime powers.
+  await sql.query(`GRANT ${quotedRoleName} TO CURRENT_USER`);
   await sql.query(`GRANT CONNECT ON DATABASE ${quotedDatabaseName} TO ${quotedRoleName}`);
   await sql.query(`GRANT USAGE ON SCHEMA public TO ${quotedRoleName}`);
   await sql.query(
