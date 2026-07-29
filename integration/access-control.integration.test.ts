@@ -1,12 +1,10 @@
 import { beforeAll, describe, expect, it } from "vitest";
 
-import {
-  assertDisposableDatabaseEnvironment,
-  type DisposableDatabaseConfig,
-} from "@/lib/disposable-database";
+import type { DisposableRuntimeRoleConfig } from "@/lib/disposable-runtime-role";
+import { assertDisposableRuntimeRoleEnvironment } from "@/lib/disposable-runtime-role";
 import type { AuthContext } from "@/lib/auth";
 
-let config: DisposableDatabaseConfig;
+let config: DisposableRuntimeRoleConfig;
 let prefix: string;
 let matterA: string;
 let matterB: string;
@@ -40,15 +38,18 @@ function context(
 }
 
 beforeAll(async () => {
-  config = assertDisposableDatabaseEnvironment(process.env);
-  process.env.DATABASE_URL = config.databaseUrl;
+  config = assertDisposableRuntimeRoleEnvironment(process.env);
+  process.env.DATABASE_URL = config.runtimeDatabaseUrl;
 
-  const { ensureAccessControlTables, getDb } = await import("@/lib/db");
+  const { getDb } = await import("@/lib/db");
+  const { assertRequiredSchemaVersions } = await import(
+    "@/lib/schema-readiness"
+  );
   const {
     ADMIN_PROFILE_CAPABILITIES,
   } = await import("@/lib/access-control");
   const { CAPABILITIES } = await import("@/lib/data-model");
-  await ensureAccessControlTables();
+  await assertRequiredSchemaVersions();
   const sql = getDb();
   const adminCapabilities = JSON.stringify(ADMIN_PROFILE_CAPABILITIES);
   const allCapabilities = JSON.stringify(CAPABILITIES);

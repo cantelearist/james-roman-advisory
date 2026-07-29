@@ -63,8 +63,31 @@ jobs:
           INTEGRATION_NEON_EXPIRES_AT: ${{ steps.expiry.outputs.expires_at }}
           INTEGRATION_NEON_BRANCH_TYPE: schema-only
 
-      - name: Run database-backed access and RLS readiness suites
+      - name: Provision disposable least-privilege runtime login
+        run: npm run db:runtime-role:provision:disposable
+        env:
+          ALLOW_DATABASE_INTEGRATION: "true"
+          INTEGRATION_DATABASE_URL: ${{ steps.create-branch.outputs.db_url_pooled }}
+          INTEGRATION_NEON_BRANCH_ID: ${{ steps.create-branch.outputs.branch_id }}
+          INTEGRATION_NEON_BRANCH_NAME: ${{ env.TEST_BRANCH_NAME }}
+          INTEGRATION_NEON_ENDPOINT_HOST: ${{ steps.create-branch.outputs.db_host_pooled }}
+          INTEGRATION_NEON_EXPIRES_AT: ${{ steps.expiry.outputs.expires_at }}
+          INTEGRATION_NEON_BRANCH_TYPE: schema-only
+
+      - name: Run access, RLS readiness, and real runtime-login suites
         run: npm run test:integration:database
+        env:
+          ALLOW_DATABASE_INTEGRATION: "true"
+          INTEGRATION_DATABASE_URL: ${{ steps.create-branch.outputs.db_url_pooled }}
+          INTEGRATION_NEON_BRANCH_ID: ${{ steps.create-branch.outputs.branch_id }}
+          INTEGRATION_NEON_BRANCH_NAME: ${{ env.TEST_BRANCH_NAME }}
+          INTEGRATION_NEON_ENDPOINT_HOST: ${{ steps.create-branch.outputs.db_host_pooled }}
+          INTEGRATION_NEON_EXPIRES_AT: ${{ steps.expiry.outputs.expires_at }}
+          INTEGRATION_NEON_BRANCH_TYPE: schema-only
+
+      - name: Delete disposable runtime login
+        if: ${{ always() && steps.create-branch.outputs.branch_id != '' }}
+        run: npm run db:runtime-role:cleanup:disposable
         env:
           ALLOW_DATABASE_INTEGRATION: "true"
           INTEGRATION_DATABASE_URL: ${{ steps.create-branch.outputs.db_url_pooled }}
