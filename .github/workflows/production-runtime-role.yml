@@ -1,0 +1,77 @@
+name: Protected production runtime role
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Operation to perform
+        required: true
+        type: choice
+        default: preflight
+        options:
+          - preflight
+          - provision
+      expected_sha:
+        description: Exact 40-character main commit SHA
+        required: true
+        type: string
+      confirmation:
+        description: Type the exact preflight or provision confirmation phrase
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-runtime-role
+  cancel-in-progress: false
+
+jobs:
+  runtime-role:
+    name: ${{ inputs.mode == 'provision' && 'Provision production runtime role' || 'Inspect production runtime role boundary' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: production-database-migrations
+
+    steps:
+      - name: Check out dispatched main commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Run protected production runtime-role command
+        id: runtime-role
+        run: npm run db:runtime-role:production
+        env:
+          ALLOW_PRODUCTION_RUNTIME_ROLE: "true"
+          PRODUCTION_RUNTIME_ROLE_ENVIRONMENT: production-database-migrations
+          RUNTIME_ROLE_MODE: ${{ inputs.mode }}
+          RUNTIME_ROLE_EXPECTED_SHA: ${{ inputs.expected_sha }}
+          RUNTIME_ROLE_CONFIRMATION: ${{ inputs.confirmation }}
+          MIGRATION_DATABASE_URL: ${{ secrets.MIGRATION_DATABASE_URL }}
+          MIGRATION_DATABASE_HOST: ${{ vars.MIGRATION_DATABASE_HOST }}
+          RUNTIME_DATABASE_PASSWORD: ${{ secrets.RUNTIME_DATABASE_PASSWORD }}
+
+      - name: Remove role after a failed provisioning attempt
+        if: ${{ failure() && inputs.mode == 'provision' }}
+        run: npm run db:runtime-role:cleanup:production
+        env:
+          ALLOW_PRODUCTION_RUNTIME_ROLE: "true"
+          PRODUCTION_RUNTIME_ROLE_ENVIRONMENT: production-database-migrations
+          RUNTIME_ROLE_MODE: ${{ inputs.mode }}
+          RUNTIME_ROLE_EXPECTED_SHA: ${{ inputs.expected_sha }}
+          RUNTIME_ROLE_CONFIRMATION: ${{ inputs.confirmation }}
+          MIGRATION_DATABASE_URL: ${{ secrets.MIGRATION_DATABASE_URL }}
+          MIGRATION_DATABASE_HOST: ${{ vars.MIGRATION_DATABASE_HOST }}
+          RUNTIME_DATABASE_PASSWORD: ${{ secrets.RUNTIME_DATABASE_PASSWORD }}

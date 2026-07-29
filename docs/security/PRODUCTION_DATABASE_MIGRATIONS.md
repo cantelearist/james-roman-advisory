@@ -32,6 +32,30 @@ Vercel previews, application runtime variables, local committed files, or
 secondary tools. `NEON_API_KEY` is not a substitute for the migration URL and
 is not used by the application.
 
+## Runtime credential cutover
+
+The separate `Protected production runtime role` workflow uses the same
+reviewer-protected environment to create the permanent `jra_app_runtime`
+login. It requires a temporary `RUNTIME_DATABASE_PASSWORD` environment secret,
+an exact `main` SHA, and a mode-specific confirmation phrase.
+
+The workflow:
+
+1. confirms all required schema versions are present;
+2. creates a `NOSUPERUSER`, `NOCREATEDB`, `NOCREATEROLE`, `NOINHERIT`,
+   `NOREPLICATION`, `NOBYPASSRLS` login that inherits no other role;
+3. grants schema usage, application-table DML, and required sequence access;
+4. keeps `app_schema_versions` read-only;
+5. proves the role owns no relations, cannot create or alter schema objects,
+   cannot create roles, and has no truncate, references, or trigger grants;
+6. confirms production RLS remains disabled during this credential-only stage;
+7. removes the role automatically if provisioning or validation fails.
+
+Only the SHA-256 fingerprint of the constructed runtime URL may appear in
+logs. After the same fingerprinted URL is installed as Vercel's
+production-only `DATABASE_URL`, delete `RUNTIME_DATABASE_PASSWORD` from the
+GitHub environment.
+
 ## Required sequence
 
 1. Select `main` in the workflow dispatcher.

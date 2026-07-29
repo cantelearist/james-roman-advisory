@@ -105,7 +105,7 @@ Stage 1B migration and runtime-cutover status:
 - the DDL implementations remain available only to the protected migration
   runner.
 
-The final Stage 1 credential boundary is still pending:
+The final Stage 1 credential boundary requires:
 
 1. create or identify a least-privilege runtime role that cannot `CREATE`,
    `ALTER`, manage roles, own application tables, or bypass RLS;
@@ -114,6 +114,11 @@ The final Stage 1 credential boundary is still pending:
 3. replace the owner-scoped Vercel runtime URL with the verified runtime URL;
 4. prove the live runtime credential cannot perform DDL;
 5. retain the owner URL only in the protected GitHub migration environment.
+
+The protected production role workflow and disposable real-login gate now
+encode these checks. Stage 1 is complete only after the Vercel production
+secret is replaced, the new deployment passes production smoke, and the
+temporary runtime-password handoff secret is deleted.
 
 Only after those checks should Stage 1 be marked complete. Production RLS must
 remain disabled throughout this stage.
