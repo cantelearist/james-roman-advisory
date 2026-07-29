@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ensureUsersTable, getDb } from "@/lib/db";
+import { getDb } from "@/lib/db";
 import type { UserRole } from "@/lib/data-model";
 import { ratelimit, getClientIp } from "@/lib/ratelimit";
 import { hashPassword } from "@/lib/password";
+import { assertRequiredSchemaVersions } from "@/lib/schema-readiness";
 
 // SECURITY: No fallback. If SEED_KEY is not set, the route is permanently locked.
 // Never add a default value here — this endpoint must fail loudly in any environment
@@ -52,7 +53,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    await ensureUsersTable();
+    await assertRequiredSchemaVersions();
     const sql = getDb();
     const seedPassword = process.env.SEED_PASSWORD ? await hashPassword(process.env.SEED_PASSWORD) : null;
 

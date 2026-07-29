@@ -2,8 +2,9 @@ import { NextResponse } from "next/server";
 
 import { authorizeCapability, getPortalAccessSummary } from "@/lib/access-control";
 import { getAuthContext } from "@/lib/auth";
-import { ensureEngagementOperationsTables, getDb } from "@/lib/db";
+import { getDb } from "@/lib/db";
 import { getStripe } from "@/lib/stripe";
+import { assertRequiredSchemaVersions } from "@/lib/schema-readiness";
 
 export const runtime = "nodejs";
 
@@ -17,7 +18,7 @@ export async function POST(
     return NextResponse.json({ error: "Client payment access required" }, { status: 403 });
   }
   const { id } = await params;
-  await ensureEngagementOperationsTables();
+  await assertRequiredSchemaVersions();
   const sql = getDb();
   const invoices = await sql`
     SELECT i.*, c.email AS client_email

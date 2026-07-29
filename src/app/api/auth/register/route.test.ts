@@ -8,8 +8,10 @@ const authMocks = vi.hoisted(() => ({
 const ratelimit = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/db", () => ({
-  ensureAccessControlTables: vi.fn().mockResolvedValue(undefined),
   getDb: vi.fn(() => sql),
+}));
+vi.mock("@/lib/schema-readiness", () => ({
+  assertRequiredSchemaVersions: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock("@/lib/auth", () => ({
   createSession: authMocks.createSession,

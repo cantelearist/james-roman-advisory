@@ -3,7 +3,8 @@ import { z } from "zod";
 
 import { accessAuditQuery } from "@/lib/access-control";
 import { getAuthContext, isSuperAdmin } from "@/lib/auth";
-import { ensureAccessControlTables, getDb } from "@/lib/db";
+import { getDb } from "@/lib/db";
+import { assertRequiredSchemaVersions } from "@/lib/schema-readiness";
 
 export const runtime = "nodejs";
 
@@ -39,7 +40,7 @@ async function requireSuperAdminApi() {
 export async function GET() {
   const auth = await requireSuperAdminApi();
   if ("response" in auth) return auth.response;
-  await ensureAccessControlTables();
+  await assertRequiredSchemaVersions();
   const sql = getDb();
   const rows = await sql`SELECT value, updated_at FROM portal_settings WHERE key = 'workspace' LIMIT 1`;
   const stored = rows[0]?.value && typeof rows[0].value === "object" ? rows[0].value : {};
@@ -56,7 +57,7 @@ export async function PATCH(request: Request) {
   if (!parsed.success) {
     return NextResponse.json({ error: "Workspace settings are invalid", issues: parsed.error.issues }, { status: 400 });
   }
-  await ensureAccessControlTables();
+  await assertRequiredSchemaVersions();
   const sql = getDb();
   await sql.transaction((tx) => [
     tx`

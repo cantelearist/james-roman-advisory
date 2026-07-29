@@ -2,10 +2,11 @@ import { randomBytes } from "node:crypto";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { ensureAuthTables, getDb } from "@/lib/db";
+import { getDb } from "@/lib/db";
 import { sendPasswordRecovery } from "@/lib/email";
 import { hashAuthToken } from "@/lib/mfa";
 import { getClientIp, ratelimit } from "@/lib/ratelimit";
+import { assertRequiredSchemaVersions } from "@/lib/schema-readiness";
 
 export const runtime = "nodejs";
 
@@ -31,7 +32,7 @@ export async function POST(request: Request) {
   const parsed = schema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ message: MESSAGE });
 
-  await ensureAuthTables();
+  await assertRequiredSchemaVersions();
   const sql = getDb();
   const rows = await sql`
     SELECT id, name, email

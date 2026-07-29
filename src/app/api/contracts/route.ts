@@ -3,8 +3,9 @@ import { z } from "zod";
 
 import { authorizeCapability, getPortalAccessSummary, hasCapability } from "@/lib/access-control";
 import { getAuthContext } from "@/lib/auth";
-import { ensureEngagementOperationsTables, getDb } from "@/lib/db";
+import { getDb } from "@/lib/db";
 import { notifyEngagementMembers } from "@/lib/notifications";
+import { assertRequiredSchemaVersions } from "@/lib/schema-readiness";
 
 const schema = z.object({
   matterId: z.string().uuid(),
@@ -26,7 +27,7 @@ export async function GET(request: Request) {
   if (matterId && !(await authorizeCapability(context, access, "contracts.view", { matterId }))) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
-  await ensureEngagementOperationsTables();
+  await assertRequiredSchemaVersions();
   const sql = getDb();
   const global = context.role === "super_admin" || (context.role === "admin" && access.scope === "global");
   const contracts = await sql`
@@ -55,7 +56,7 @@ export async function POST(request: Request) {
   if (!(await authorizeCapability(context, access, "contracts.manage", { matterId: parsed.data.matterId }))) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
-  await ensureEngagementOperationsTables();
+  await assertRequiredSchemaVersions();
   const sql = getDb();
   const rows = await sql`
     INSERT INTO engagement_contracts (

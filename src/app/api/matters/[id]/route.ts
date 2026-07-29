@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { getDb, ensureEngagementOperationsTables, logMatterEvent, MatterStatus } from "@/lib/db";
+import { getDb, logMatterEvent, MatterStatus } from "@/lib/db";
 import {
   authorizeCapability,
   canReceiveAudience,
@@ -9,6 +9,7 @@ import {
 } from "@/lib/access-control";
 import { getAuthContext } from "@/lib/auth";
 import { triggerPortalAutomations } from "@/lib/automations";
+import { assertRequiredSchemaVersions } from "@/lib/schema-readiness";
 
 const VALID_STATUSES: MatterStatus[] = [
   "intake", "assessment", "review", "vendor_evaluation", "oversight", "clearance", "closed",
@@ -41,7 +42,7 @@ export async function GET(
   if (!(await authorizeCapability(context, access, "engagements.view", { matterId: id }))) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
-  await ensureEngagementOperationsTables();
+  await assertRequiredSchemaVersions();
   const sql = getDb();
 
   const [matter] = await sql`
@@ -147,7 +148,7 @@ export async function PATCH(
     overrideReason,
   } = parsed.data;
 
-  await ensureEngagementOperationsTables();
+  await assertRequiredSchemaVersions();
   const sql = getDb();
 
   // Get current matter to detect status change

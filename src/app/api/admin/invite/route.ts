@@ -9,9 +9,10 @@ import {
 } from "@/lib/access-control";
 import { getAuthContext, isSuperAdmin } from "@/lib/auth";
 import type { AccessScope, UserRole } from "@/lib/data-model";
-import { ensureAccessControlTables, getDb } from "@/lib/db";
+import { getDb } from "@/lib/db";
 import { ratelimit } from "@/lib/ratelimit";
 import { canonicalSiteOrigin } from "@/lib/site-url";
+import { assertRequiredSchemaVersions } from "@/lib/schema-readiness";
 
 export const runtime = "nodejs";
 
@@ -114,7 +115,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  await ensureAccessControlTables();
+  await assertRequiredSchemaVersions();
   const sql = getDb();
   const existing = await sql`SELECT id FROM users WHERE LOWER(email) = ${email} LIMIT 1`;
   if (existing.length > 0) return NextResponse.json({ error: "An account with this email already exists" }, { status: 409 });
@@ -208,7 +209,7 @@ export async function GET() {
   if (!(await authorizeCapability(context, access, "users.invite"))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
-  await ensureAccessControlTables();
+  await assertRequiredSchemaVersions();
   const sql = getDb();
   const global = context.role === "super_admin"
     || (context.role === "admin" && access.scope === "global");
@@ -258,7 +259,7 @@ export async function PATCH(req: NextRequest) {
   if (!body?.id || body.action !== "resend") {
     return NextResponse.json({ error: "Invalid invitation action" }, { status: 400 });
   }
-  await ensureAccessControlTables();
+  await assertRequiredSchemaVersions();
   const sql = getDb();
   const invitations = await sql`
     SELECT id, email, role, matter_id, accepted_at
@@ -306,7 +307,7 @@ export async function DELETE(req: NextRequest) {
   }
   const id = req.nextUrl.searchParams.get("id");
   if (!id) return NextResponse.json({ error: "id is required" }, { status: 400 });
-  await ensureAccessControlTables();
+  await assertRequiredSchemaVersions();
   const sql = getDb();
   const invitations = await sql`
     SELECT id, role, matter_id, accepted_at

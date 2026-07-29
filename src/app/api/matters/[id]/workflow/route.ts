@@ -7,8 +7,9 @@ import {
   getPortalAccessSummary,
 } from "@/lib/access-control";
 import { getAuthContext } from "@/lib/auth";
-import { ensureEngagementOperationsTables, getDb, logMatterEvent } from "@/lib/db";
+import { getDb, logMatterEvent } from "@/lib/db";
 import type { ResourceAudience } from "@/lib/data-model";
+import { assertRequiredSchemaVersions } from "@/lib/schema-readiness";
 
 export const runtime = "nodejs";
 
@@ -41,7 +42,7 @@ export async function GET(
   if (!(await authorizeCapability(context, access, "timeline.view", { matterId: id }))) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
-  await ensureEngagementOperationsTables();
+  await assertRequiredSchemaVersions();
   const sql = getDb();
   const items = await sql`
     SELECT wi.*, assignee.name AS assignee_name, document.name AS evidence_document_name
@@ -80,7 +81,7 @@ export async function POST(
   }
   const parsed = createSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Invalid workflow item", issues: parsed.error.issues }, { status: 400 });
-  await ensureEngagementOperationsTables();
+  await assertRequiredSchemaVersions();
   const sql = getDb();
   const matter = await sql`SELECT id FROM matters WHERE id = ${id} LIMIT 1`;
   if (matter.length === 0) return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -145,7 +146,7 @@ export async function PATCH(
   if (parsed.data.status === "blocked" && !parsed.data.blockerReason) {
     return NextResponse.json({ error: "A blocker reason is required" }, { status: 400 });
   }
-  await ensureEngagementOperationsTables();
+  await assertRequiredSchemaVersions();
   const sql = getDb();
   const current = await sql`
     SELECT * FROM engagement_workflow_items

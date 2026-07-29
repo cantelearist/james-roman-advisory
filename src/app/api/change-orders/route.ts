@@ -3,8 +3,9 @@ import { z } from "zod";
 
 import { authorizeCapability, getPortalAccessSummary, hasCapability } from "@/lib/access-control";
 import { getAuthContext } from "@/lib/auth";
-import { ensureEngagementOperationsTables, getDb } from "@/lib/db";
+import { getDb } from "@/lib/db";
 import { notifyEngagementMembers } from "@/lib/notifications";
+import { assertRequiredSchemaVersions } from "@/lib/schema-readiness";
 
 const schema = z.object({
   matterId: z.string().uuid(),
@@ -31,7 +32,7 @@ export async function GET(request: Request) {
   if (matterId && !(await authorizeCapability(context, access, "contracts.view", { matterId }))) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
-  await ensureEngagementOperationsTables();
+  await assertRequiredSchemaVersions();
   const sql = getDb();
   const global = context.role === "super_admin" || (context.role === "admin" && access.scope === "global");
   const changeOrders = await sql`
@@ -64,7 +65,7 @@ export async function POST(request: Request) {
   if (!(await authorizeCapability(context, access, "contracts.manage", { matterId: parsed.data.matterId }))) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
-  await ensureEngagementOperationsTables();
+  await assertRequiredSchemaVersions();
   const sql = getDb();
   if (parsed.data.sourceContractId) {
     const rows = await sql`SELECT id FROM engagement_contracts WHERE id = ${parsed.data.sourceContractId} AND matter_id = ${parsed.data.matterId}`;

@@ -13,7 +13,8 @@ import {
   type Capability,
   type UserRole,
 } from "@/lib/data-model";
-import { ensureAccessControlTables, getDb } from "@/lib/db";
+import { getDb } from "@/lib/db";
+import { assertRequiredSchemaVersions } from "@/lib/schema-readiness";
 
 export const runtime = "nodejs";
 
@@ -79,7 +80,7 @@ export async function GET(): Promise<NextResponse> {
   const auth = await requireSuperAdminApi();
   if (!auth.ok) return auth.response;
 
-  await ensureAccessControlTables();
+  await assertRequiredSchemaVersions();
   const sql = getDb();
   const [users, profiles, memberships, matters, auditEvents] = await Promise.all([
     sql`
@@ -180,7 +181,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     );
   }
 
-  await ensureAccessControlTables();
+  await assertRequiredSchemaVersions();
   const sql = getDb();
   const input = parsed.data;
 

@@ -3,10 +3,11 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { createSession, setSessionCookie } from "@/lib/auth";
-import { ensureAccessControlTables, getDb } from "@/lib/db";
+import { getDb } from "@/lib/db";
 import type { AccessScope, UserRole } from "@/lib/data-model";
 import { hashPassword } from "@/lib/password";
 import { getClientIp, ratelimit } from "@/lib/ratelimit";
+import { assertRequiredSchemaVersions } from "@/lib/schema-readiness";
 
 export const runtime = "nodejs";
 
@@ -48,7 +49,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Name, email, and a 12-character password are required" }, { status: 400 });
   }
 
-  await ensureAccessControlTables();
+  await assertRequiredSchemaVersions();
   const sql = getDb();
   let role: UserRole = "client";
   let invitationId: string | null = null;

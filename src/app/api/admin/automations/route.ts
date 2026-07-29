@@ -3,7 +3,8 @@ import { z } from "zod";
 
 import { accessAuditQuery } from "@/lib/access-control";
 import { getAuthContext, isSuperAdmin } from "@/lib/auth";
-import { ensureEngagementOperationsTables, getDb } from "@/lib/db";
+import { getDb } from "@/lib/db";
+import { assertRequiredSchemaVersions } from "@/lib/schema-readiness";
 
 export const runtime = "nodejs";
 
@@ -24,7 +25,7 @@ async function requireSuperAdminApi() {
 export async function GET() {
   const auth = await requireSuperAdminApi();
   if ("response" in auth) return auth.response;
-  await ensureEngagementOperationsTables();
+  await assertRequiredSchemaVersions();
   const sql = getDb();
   const automations = await sql`
     SELECT automation.*, owner.name AS owner_name,
@@ -54,7 +55,7 @@ export async function PATCH(request: Request) {
   if ("response" in auth) return auth.response;
   const parsed = updateSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Automation settings are invalid" }, { status: 400 });
-  await ensureEngagementOperationsTables();
+  await assertRequiredSchemaVersions();
   const sql = getDb();
   const existing = await sql`SELECT * FROM portal_automations WHERE id = ${parsed.data.id} LIMIT 1`;
   if (existing.length === 0) return NextResponse.json({ error: "Automation not found" }, { status: 404 });

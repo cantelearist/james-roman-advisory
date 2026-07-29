@@ -8,7 +8,7 @@ import {
   MFA_CHALLENGE_COOKIE,
   setSessionCookie,
 } from "@/lib/auth";
-import { ensureAuthTables, getDb } from "@/lib/db";
+import { getDb } from "@/lib/db";
 import {
   createRecoveryCodes,
   decryptMfaSecret,
@@ -17,6 +17,7 @@ import {
   verifyTotp,
 } from "@/lib/mfa";
 import { getClientIp, ratelimit } from "@/lib/ratelimit";
+import { assertRequiredSchemaVersions } from "@/lib/schema-readiness";
 
 export const runtime = "nodejs";
 
@@ -38,7 +39,7 @@ export async function POST(request: Request) {
   const token = (await cookies()).get(MFA_CHALLENGE_COOKIE)?.value;
   if (!token) return NextResponse.json({ error: "Challenge expired" }, { status: 401 });
 
-  await ensureAuthTables();
+  await assertRequiredSchemaVersions();
   const sql = getDb();
   const rows = await sql`
     SELECT c.id, c.user_id, c.purpose, m.encrypted_secret, m.enabled_at, m.last_used_step

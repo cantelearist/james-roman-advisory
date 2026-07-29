@@ -2,7 +2,8 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
 import { MFA_CHALLENGE_COOKIE } from "@/lib/auth";
-import { ensureAuthTables, getDb } from "@/lib/db";
+import { getDb } from "@/lib/db";
+import { assertRequiredSchemaVersions } from "@/lib/schema-readiness";
 import {
   createOtpAuthUri,
   encryptMfaSecret,
@@ -15,7 +16,7 @@ export const runtime = "nodejs";
 export async function GET() {
   const token = (await cookies()).get(MFA_CHALLENGE_COOKIE)?.value;
   if (!token) return NextResponse.json({ error: "Challenge expired" }, { status: 401 });
-  await ensureAuthTables();
+  await assertRequiredSchemaVersions();
   const sql = getDb();
   const rows = await sql`
     SELECT c.user_id, c.purpose, u.email

@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { getAuthContext } from "@/lib/auth";
-import { ensureEngagementOperationsTables, getDb } from "@/lib/db";
+import { getDb } from "@/lib/db";
+import { assertRequiredSchemaVersions } from "@/lib/schema-readiness";
 
 export const runtime = "nodejs";
 
@@ -22,7 +23,7 @@ export async function GET(request: Request) {
   const context = await getAuthContext();
   if (!context) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const viewModule = new URL(request.url).searchParams.get("module") ?? "engagements";
-  await ensureEngagementOperationsTables();
+  await assertRequiredSchemaVersions();
   const sql = getDb();
   const views = await sql`
     SELECT id, module, name, view_type, filters, sorting, grouping, columns, sharing, updated_at
@@ -42,7 +43,7 @@ export async function POST(request: Request) {
   if (parsed.data.sharing === "workspace" && context.role !== "super_admin" && context.role !== "admin") {
     return NextResponse.json({ error: "Only staff can publish workspace views" }, { status: 403 });
   }
-  await ensureEngagementOperationsTables();
+  await assertRequiredSchemaVersions();
   const sql = getDb();
   const id = parsed.data.id ?? crypto.randomUUID();
   const rows = await sql`

@@ -7,8 +7,9 @@ import {
   hasCapability,
 } from "@/lib/access-control";
 import { getAuthContext } from "@/lib/auth";
-import { ensureEngagementOperationsTables, getDb } from "@/lib/db";
+import { getDb } from "@/lib/db";
 import type { ResourceAudience } from "@/lib/data-model";
+import { assertRequiredSchemaVersions } from "@/lib/schema-readiness";
 
 export const runtime = "nodejs";
 
@@ -23,7 +24,7 @@ export async function GET(request: Request) {
   const unreadOnly = url.searchParams.get("unread") === "1";
   const query = url.searchParams.get("q")?.trim();
   const pattern = query ? `%${query.slice(0, 120)}%` : null;
-  await ensureEngagementOperationsTables();
+  await assertRequiredSchemaVersions();
   const sql = getDb();
   const global = context.role === "super_admin"
     || (context.role === "admin" && access.scope === "global");
@@ -76,7 +77,7 @@ export async function PATCH(request: Request) {
   if (!hasCapability(access, "messages.view")) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
-  await ensureEngagementOperationsTables();
+  await assertRequiredSchemaVersions();
   const sql = getDb();
   const resourceRows = body.messageId
     ? await sql`SELECT matter_id FROM engagement_messages WHERE id = ${body.messageId} LIMIT 1`

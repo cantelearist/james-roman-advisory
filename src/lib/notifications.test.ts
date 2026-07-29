@@ -3,8 +3,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const ensureTables = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/db", () => ({
-  ensureEngagementOperationsTables: ensureTables,
   getDb: vi.fn(),
+}));
+vi.mock("@/lib/schema-readiness", () => ({
+  assertRequiredSchemaVersions: ensureTables,
 }));
 
 import { notifyEngagementMembers } from "./notifications";

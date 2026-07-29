@@ -8,8 +8,9 @@ import {
 } from "@/lib/access-control";
 import { triggerPortalAutomations } from "@/lib/automations";
 import { getAuthContext } from "@/lib/auth";
-import { ensureEngagementOperationsTables, getDb, logFileAccess } from "@/lib/db";
+import { getDb, logFileAccess } from "@/lib/db";
 import { notifyEngagementMembers } from "@/lib/notifications";
+import { assertRequiredSchemaVersions } from "@/lib/schema-readiness";
 import {
   ALLOWED_MIME_TYPES,
   MAX_UPLOAD_BYTES,
@@ -32,7 +33,7 @@ export async function GET(_request: Request, routeContext: RouteContext) {
   if (!hasCapability(access, "documents.view")) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
-  await ensureEngagementOperationsTables();
+  await assertRequiredSchemaVersions();
   const sql = getDb();
   const documents = await sql`
     SELECT id, matter_id, visibility, publication_status
@@ -79,7 +80,7 @@ export async function POST(request: Request, routeContext: RouteContext) {
   if (!context) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { id } = await routeContext.params;
   const access = await getPortalAccessSummary(context);
-  await ensureEngagementOperationsTables();
+  await assertRequiredSchemaVersions();
   const sql = getDb();
   const documents = await sql`
     SELECT id, matter_id, client_id, name, visibility, publication_status

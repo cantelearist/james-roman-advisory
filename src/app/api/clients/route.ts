@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
-import { getDb, ensureVaultTables } from "@/lib/db";
+import { getDb } from "@/lib/db";
 import {
   authorizeCapability,
   getPortalAccessSummary,
   hasCapability,
 } from "@/lib/access-control";
 import { getAuthContext } from "@/lib/auth";
+import { assertRequiredSchemaVersions } from "@/lib/schema-readiness";
 
 export async function GET() {
   const context = await getAuthContext();
@@ -16,7 +17,7 @@ export async function GET() {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  await ensureVaultTables();
+  await assertRequiredSchemaVersions();
   const sql = getDb();
 
   const clients = role === "super_admin" || (role === "admin" && access.scope === "global")
@@ -54,7 +55,7 @@ export async function POST(req: Request) {
   const { name, email, phone, notes } = body;
   if (!name?.trim()) return NextResponse.json({ error: "name is required" }, { status: 400 });
 
-  await ensureVaultTables();
+  await assertRequiredSchemaVersions();
   const sql = getDb();
   const id = crypto.randomUUID();
 

@@ -2,10 +2,11 @@ import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 
 import { draftLocalIntakeSummary } from "@/lib/ai/intake-summary";
-import { getDb, ensureConsultationsTable } from "@/lib/db";
+import { getDb } from "@/lib/db";
 import { sendConsultationNotification } from "@/lib/email";
 import { consultationSchema, redactForAudit } from "@/lib/intake";
 import { ratelimit, getClientIp } from "@/lib/ratelimit";
+import { assertRequiredSchemaVersions } from "@/lib/schema-readiness";
 
 export const runtime = "nodejs";
 
@@ -41,7 +42,7 @@ export async function POST(request: Request) {
     const summaryDraft = draftLocalIntakeSummary(input);
     const id = crypto.randomUUID();
 
-    await ensureConsultationsTable();
+    await assertRequiredSchemaVersions();
     const sql = getDb();
     await sql`
       INSERT INTO consultations (id, reference_id, name, email, market, matter, message, summary_draft)

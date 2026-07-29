@@ -3,8 +3,10 @@ import { describe, expect, it, vi } from "vitest";
 const ensureTables = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/db", () => ({
-  ensureAccessControlTables: ensureTables,
   getDb: vi.fn(),
+}));
+vi.mock("@/lib/schema-readiness", () => ({
+  assertRequiredSchemaVersions: ensureTables,
 }));
 
 import { logAccessAudit } from "./access-control";
