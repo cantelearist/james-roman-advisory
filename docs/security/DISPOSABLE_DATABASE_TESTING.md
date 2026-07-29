@@ -19,14 +19,21 @@ The supported integration workflow:
 3. Sets an expiry no more than 24 hours in the future.
 4. Passes the branch ID, endpoint host, branch type, and expiry to the test
    process.
-5. Runs the role, capability, and scope matrix against that branch.
-6. Confirms every public application table has an explicit RLS classification.
-7. Creates a temporary unprivileged SQL role and fixture policy to prove that
+5. Creates a real, branch-bound login with `NOSUPERUSER`, `NOCREATEDB`,
+   `NOCREATEROLE`, `NOINHERIT`, `NOREPLICATION`, and `NOBYPASSRLS`.
+6. Grants that login schema usage and application DML only. The migration
+   ledger remains read-only, while table creation, table alteration, role
+   creation, ownership, truncation, references, and triggers remain denied.
+7. Uses the real login to verify the complete migration ledger, every
+   application-table privilege, and an insert/read/update/delete lifecycle.
+8. Runs the role, capability, and scope matrix through that real runtime login,
+   including the application's read-only schema readiness gate.
+9. Confirms every public application table has an explicit RLS classification.
+10. Creates a separate temporary unprivileged SQL role and fixture policy to prove that
    missing scope defaults to no rows, transaction-local scope does not leak,
    and cross-scope writes are rejected.
-8. Deletes the fixture role and table, then deletes the branch even when tests
-   fail. Neon expiry remains a second cleanup
-   mechanism.
+11. Deletes both temporary roles and the fixture table, then deletes the branch
+   even when tests fail. Neon expiry remains a second cleanup mechanism.
 
 The runtime guard rejects missing attestations, production execution, ordinary
 data-bearing branches, endpoint mismatches, expired or long-lived branches, and
@@ -53,5 +60,6 @@ the Git ref to test. The workflow is manual by design so unreviewed pull-request
 code cannot automatically receive database credentials.
 
 The RLS fixture is intentionally isolated from application tables. Passing this
-suite proves the required Postgres mechanics; it does not mean production RLS
-is enabled.
+suite proves the required Postgres mechanics and that the current application
+schema works through a least-privilege login. It does not change the production
+credential and does not mean production RLS is enabled.
