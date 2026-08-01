@@ -34,7 +34,19 @@ export async function GET(request: Request) {
       msg.subject, msg.thread_id, msg.parent_message_id, msg.created_at,
       sender.name AS sender_name, sender.role AS sender_role,
       m.title AS matter_title, c.name AS client_name,
-      (receipt.read_at IS NOT NULL OR msg.sender_id = ${context.userId}) AS is_read
+      (receipt.read_at IS NOT NULL OR msg.sender_id = ${context.userId}) AS is_read,
+      COALESCE((
+        SELECT json_agg(json_build_object(
+          'id', d.id,
+          'name', d.name,
+          'original_name', d.original_name,
+          'content_type', d.content_type,
+          'size_bytes', d.size_bytes,
+          'created_at', d.created_at
+        ) ORDER BY d.created_at, d.id)
+        FROM documents d
+        WHERE d.message_id = msg.id AND d.archived_at IS NULL
+      ), '[]'::JSON) AS attachments
     FROM engagement_messages msg
     JOIN matters m ON m.id = msg.matter_id
     JOIN clients c ON c.id = m.client_id

@@ -15,6 +15,7 @@ import {
   Lock,
   MessageSquare,
   MoreHorizontal,
+  Paperclip,
   Plus,
   RefreshCw,
   Send,
@@ -98,6 +99,16 @@ type Message = {
   subject?: string | null;
   thread_id?: string | null;
   parent_message_id?: string | null;
+  created_at: string;
+  attachments?: Attachment[];
+};
+
+type Attachment = {
+  id: string;
+  name: string;
+  original_name: string;
+  content_type: string;
+  size_bytes: number;
   created_at: string;
 };
 
@@ -185,6 +196,7 @@ export default function EngagementWorkspacePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState("");
+  const [messageAttachmentCount, setMessageAttachmentCount] = useState(0);
   const [showDetails, setShowDetails] = useState(false);
   const [showTask, setShowTask] = useState(false);
   const [showRequirement, setShowRequirement] = useState(false);
@@ -356,13 +368,13 @@ export default function EngagementWorkspacePage() {
     setSaving("message");
     const response = await fetch(`/api/matters/${id}/messages`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ body: data.get("body"), audience: data.get("audience") }),
+      body: data,
     });
     const result = await response.json();
     if (!response.ok) setError(result.error ?? "The update could not be sent.");
     else {
       form.reset();
+      setMessageAttachmentCount(0);
       setMessages((rows) => [...rows, result.message]);
     }
     setSaving("");
@@ -382,6 +394,28 @@ export default function EngagementWorkspacePage() {
       URL.revokeObjectURL(url);
     } catch (downloadError) {
       setError(downloadError instanceof Error ? downloadError.message : "Document download failed.");
+    } finally {
+      setSaving("");
+    }
+  }
+
+  async function downloadAttachment(attachment: Attachment) {
+    setSaving(attachment.id);
+    setError("");
+    try {
+      const response = await fetch(`/api/messages/attachments/${attachment.id}`);
+      if (!response.ok) {
+        const result = await response.json().catch(() => null);
+        throw new Error(result?.error ?? "Attachment download failed.");
+      }
+      const url = URL.createObjectURL(await response.blob());
+      const anchor = window.document.createElement("a");
+      anchor.href = url;
+      anchor.download = attachment.original_name || attachment.name;
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } catch (downloadError) {
+      setError(downloadError instanceof Error ? downloadError.message : "Attachment download failed.");
     } finally {
       setSaving("");
     }
@@ -561,7 +595,7 @@ export default function EngagementWorkspacePage() {
             {messages.length === 0 ? <EmptyState icon={MessageSquare} title="No updates" description="The first engagement message will establish this correspondence record." /> : messages.map((message) => (
               <article key={message.id}>
                 <span className="portal-avatar">{message.sender_name.slice(0, 1)}</span>
-                <div><header><strong>{message.sender_name}</strong><span>{message.sender_role.replace("_", " ")} · {formatDate(message.created_at, true)}</span><em className={`portal-audience portal-audience-${message.audience}`}>{message.audience === "internal" ? <Lock size={11} /> : <Users size={11} />}{message.audience}</em></header><p>{message.body}</p></div>
+                <div><header><strong>{message.sender_name}</strong><span>{message.sender_role.replace("_", " ")} · {formatDate(message.created_at, true)}</span><em className={`portal-audience portal-audience-${message.audience}`}>{message.audience === "internal" ? <Lock size={11} /> : <Users size={11} />}{message.audience}</em></header><p>{message.body}</p>{Boolean(message.attachments?.length) && <div className="portal-message-attachments">{message.attachments?.map((attachment) => <button type="button" key={attachment.id} onClick={() => downloadAttachment(attachment)} disabled={saving === attachment.id}><Paperclip size={13} /><span>{attachment.name}</span><small>{Math.max(1, Math.round(attachment.size_bytes / 1024))} KB</small><Download size={13} /></button>)}</div>}</div>
               </article>
             ))}
           </div>
@@ -570,6 +604,7 @@ export default function EngagementWorkspacePage() {
               <textarea name="body" required maxLength={10_000} placeholder="Write an engagement update…" />
               <footer>
                 {(access.role === "super_admin" || access.role === "admin") ? <select name="audience" defaultValue="client"><option value="client">Client visible</option><option value="contractor">Contractor visible</option>{can("messages.internal_view") && <option value="internal">Internal only</option>}</select> : <input type="hidden" name="audience" value={access.role === "client" ? "client" : "contractor"} />}
+                <label className="portal-attachment-button"><Paperclip size={14} />{messageAttachmentCount ? `${messageAttachmentCount} file${messageAttachmentCount === 1 ? "" : "s"}` : "Attach files"}<input type="file" name="attachments" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.webp,.heic,.txt,.csv" onChange={(event) => setMessageAttachmentCount(event.target.files?.length ?? 0)} /></label>
                 <button className="portal-primary-button" disabled={saving === "message"}><Send size={14} />{saving === "message" ? "Sending…" : "Send update"}</button>
               </footer>
             </form>

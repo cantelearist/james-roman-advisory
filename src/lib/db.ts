@@ -899,6 +899,12 @@ async function ensureEngagementOperationsTablesImpl() {
   await sql`ALTER TABLE engagement_messages ADD COLUMN IF NOT EXISTS subject TEXT`;
   await sql`ALTER TABLE engagement_messages ADD COLUMN IF NOT EXISTS thread_id TEXT`;
   await sql`ALTER TABLE engagement_messages ADD COLUMN IF NOT EXISTS parent_message_id TEXT REFERENCES engagement_messages(id) ON DELETE SET NULL`;
+  await sql`ALTER TABLE documents ADD COLUMN IF NOT EXISTS message_id TEXT REFERENCES engagement_messages(id) ON DELETE SET NULL`;
+  await sql`
+    CREATE INDEX IF NOT EXISTS documents_message_created_idx
+    ON documents (message_id, created_at)
+    WHERE message_id IS NOT NULL
+  `;
   await sql`
     CREATE TABLE IF NOT EXISTS message_read_receipts (
       message_id TEXT NOT NULL REFERENCES engagement_messages(id) ON DELETE CASCADE,
