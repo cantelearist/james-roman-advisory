@@ -681,7 +681,7 @@
 }
 
 .portal-page-header {
-  align-items: flex-start;
+  align-items: flex-end;
   display: flex;
   gap: 20px;
   justify-content: space-between;
