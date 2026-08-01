@@ -123,4 +123,55 @@ describe("Engagement message creation", () => {
     expect(sql).not.toHaveBeenCalled();
     expect(vaultMocks.uploadToVault).not.toHaveBeenCalled();
   });
+
+  it("keeps every staff reply in the parent thread audience", async () => {
+    const parentId = "11111111-1111-4111-8111-111111111111";
+    sql
+      .mockResolvedValueOnce([{ id: "matter-1", title: "Engagement", client_id: "client-1" }])
+      .mockResolvedValueOnce([{ id: parentId, thread_id: "22222222-2222-4222-8222-222222222222", audience: "internal" }])
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce([{
+        id: "message-2",
+        matter_id: "matter-1",
+        sender_id: "admin-1",
+        body: "Internal reply",
+        audience: "internal",
+        thread_id: "22222222-2222-4222-8222-222222222222",
+        parent_message_id: parentId,
+        attachments: [],
+      }]);
+
+    const response = await POST(new Request("http://localhost/api/matters/matter-1/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ body: "Internal reply", audience: "client", parentMessageId: parentId }),
+    }), { params: Promise.resolve({ id: "matter-1" }) });
+
+    expect(response.status).toBe(201);
+    expect(notificationMocks.notifyEngagementMembers).toHaveBeenCalledWith(expect.objectContaining({
+      audience: "internal",
+    }));
+    expect(sql.mock.calls.some((call) => call.slice(1).includes("internal"))).toBe(true);
+  });
+
+  it("conceals internal reply targets from staff without internal-message authority", async () => {
+    const parentId = "11111111-1111-4111-8111-111111111111";
+    accessMocks.getPortalAccessSummary.mockResolvedValue({
+      ...access,
+      capabilities: ["messages.send", "messages.view"],
+    });
+    sql
+      .mockResolvedValueOnce([{ id: "matter-1", title: "Engagement", client_id: "client-1" }])
+      .mockResolvedValueOnce([{ id: parentId, thread_id: "22222222-2222-4222-8222-222222222222", audience: "internal" }]);
+
+    const response = await POST(new Request("http://localhost/api/matters/matter-1/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ body: "Attempted reply", parentMessageId: parentId }),
+    }), { params: Promise.resolve({ id: "matter-1" }) });
+
+    expect(response.status).toBe(404);
+    expect(sql.transaction).not.toHaveBeenCalled();
+    expect(notificationMocks.notifyEngagementMembers).not.toHaveBeenCalled();
+  });
 });

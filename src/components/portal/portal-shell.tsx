@@ -51,6 +51,19 @@ type NotificationItem = {
   created_at: string;
 };
 
+type NotificationPreferences = {
+  email: {
+    messages: boolean;
+    documents: boolean;
+    finance: boolean;
+    tasks: boolean;
+  };
+};
+
+const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
+  email: { messages: true, documents: true, finance: true, tasks: true },
+};
+
 const PRIMARY_NAV: NavigationItem[] = [
   { href: "/portal", label: "Home", icon: Home },
   { href: "/portal/matters", label: "Engagements", icon: BriefcaseBusiness, capability: "engagements.view" },
@@ -92,6 +105,10 @@ export function PortalShell({ children }: { children: React.ReactNode }) {
   const [results, setResults] = useState<SearchResult[]>([]);
   const [searching, setSearching] = useState(false);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [notificationSettingsOpen, setNotificationSettingsOpen] = useState(false);
+  const [notificationPreferences, setNotificationPreferences] = useState<NotificationPreferences>(DEFAULT_NOTIFICATION_PREFERENCES);
+  const [savingNotificationPreferences, setSavingNotificationPreferences] = useState(false);
+  const [notificationPreferenceError, setNotificationPreferenceError] = useState("");
   const searchInput = useRef<HTMLInputElement>(null);
 
   const nav = useMemo(
@@ -116,6 +133,43 @@ export function PortalShell({ children }: { children: React.ReactNode }) {
       // The shell remains usable if the notification service is unavailable.
     }
   }, []);
+
+  const loadNotificationPreferences = useCallback(async () => {
+    try {
+      const response = await fetch("/api/portal/notification-preferences", { cache: "no-store" });
+      if (!response.ok) return;
+      const data = await response.json();
+      setNotificationPreferences(data.preferences ?? DEFAULT_NOTIFICATION_PREFERENCES);
+    } catch {
+      // Defaults remain enabled if personal settings are temporarily unavailable.
+    }
+  }, []);
+
+  async function updateNotificationPreference(
+    key: keyof NotificationPreferences["email"],
+    enabled: boolean,
+  ) {
+    const next = {
+      ...notificationPreferences,
+      email: { ...notificationPreferences.email, [key]: enabled },
+    };
+    setNotificationPreferences(next);
+    setSavingNotificationPreferences(true);
+    setNotificationPreferenceError("");
+    try {
+      const response = await fetch("/api/portal/notification-preferences", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(next),
+      });
+      if (!response.ok) throw new Error("Preference update failed");
+    } catch {
+      setNotificationPreferences(notificationPreferences);
+      setNotificationPreferenceError("Your email preference could not be saved. Try again.");
+    } finally {
+      setSavingNotificationPreferences(false);
+    }
+  }
 
   useEffect(() => {
     const timeout = window.setTimeout(() => void loadNotifications(), 0);
@@ -290,7 +344,9 @@ export function PortalShell({ children }: { children: React.ReactNode }) {
               className="portal-icon-button portal-notification-button"
               onClick={() => {
                 setNotificationsOpen((value) => !value);
+                setNotificationSettingsOpen(false);
                 setSearchOpen(false);
+                void loadNotificationPreferences();
               }}
               aria-label={`Notifications${unreadCount ? `, ${unreadCount} unread` : ""}`}
               aria-expanded={notificationsOpen}
@@ -306,11 +362,39 @@ export function PortalShell({ children }: { children: React.ReactNode }) {
             <div className="portal-popover-header">
               <div>
                 <p className="portal-eyebrow">Workspace</p>
-                <h2>Notifications</h2>
+                <h2>{notificationSettingsOpen ? "Email preferences" : "Notifications"}</h2>
               </div>
-              {unreadCount > 0 && <button onClick={() => markNotification()}>Mark all read</button>}
+              <div className="portal-notification-header-actions">
+                {!notificationSettingsOpen && unreadCount > 0 && <button onClick={() => markNotification()}>Mark all read</button>}
+                <button
+                  className="portal-icon-button"
+                  onClick={() => setNotificationSettingsOpen((value) => !value)}
+                  aria-label={notificationSettingsOpen ? "Return to notifications" : "Manage email preferences"}
+                >{notificationSettingsOpen ? <X size={15} /> : <Settings size={15} />}</button>
+              </div>
             </div>
-            <div className="portal-notification-list">
+            {notificationSettingsOpen ? (
+              <div className="portal-notification-preferences">
+                <p>Choose which engagement events also reach you by email. Activity remains available in the Private Office.</p>
+                {([
+                  ["messages", "Messages", "New correspondence and replies"],
+                  ["documents", "Documents", "Uploads and new versions"],
+                  ["finance", "Finance", "Contracts, invoices and reminders"],
+                  ["tasks", "Work", "Assignments and workflow blockers"],
+                ] as const).map(([key, label, detail]) => (
+                  <label key={key}>
+                    <span><strong>{label}</strong><small>{detail}</small></span>
+                    <input
+                      type="checkbox"
+                      checked={notificationPreferences.email[key]}
+                      disabled={savingNotificationPreferences}
+                      onChange={(event) => void updateNotificationPreference(key, event.target.checked)}
+                    />
+                  </label>
+                ))}
+                {notificationPreferenceError && <div className="portal-inline-error" role="alert">{notificationPreferenceError}</div>}
+              </div>
+            ) : <div className="portal-notification-list">
               {notifications.length === 0 ? (
                 <div className="portal-empty-compact">
                   <Bell size={20} />
@@ -335,7 +419,7 @@ export function PortalShell({ children }: { children: React.ReactNode }) {
                   <time>{relativeDate(item.created_at)}</time>
                 </Link>
               ))}
-            </div>
+            </div>}
           </aside>
         )}
 

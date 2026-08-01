@@ -70,6 +70,21 @@ describe("Message attachment download", () => {
     expect(sql).not.toHaveBeenCalled();
   });
 
+  it("rejects malformed version identifiers before querying attachment data", async () => {
+    authMocks.getAuthContext.mockResolvedValue(context);
+    accessMocks.getPortalAccessSummary.mockResolvedValue({
+      role: "client",
+      capabilities: ["messages.view"],
+      scope: "assigned",
+      permissionProfile: null,
+    });
+    const response = await GET(new Request("http://localhost/api/messages/attachments/doc-1?versionId=not-an-id"), {
+      params: Promise.resolve({ id: "doc-1" }),
+    });
+    expect(response.status).toBe(400);
+    expect(sql).not.toHaveBeenCalled();
+  });
+
   it("does not expose internal attachments to a client", async () => {
     authMocks.getAuthContext.mockResolvedValue(context);
     accessMocks.getPortalAccessSummary.mockResolvedValue({
@@ -163,5 +178,44 @@ describe("Message attachment download", () => {
       userId: "client-1",
       eventType: "download",
     }));
+  });
+
+  it("streams an explicitly selected historical version through the same proxy", async () => {
+    const versionId = "33333333-3333-4333-8333-333333333333";
+    authMocks.getAuthContext.mockResolvedValue(context);
+    accessMocks.getPortalAccessSummary.mockResolvedValue({
+      role: "client",
+      capabilities: ["messages.view"],
+      scope: "assigned",
+      permissionProfile: null,
+    });
+    accessMocks.authorizeCapability.mockResolvedValue(true);
+    sql.mockResolvedValueOnce([{
+      id: "doc-1",
+      matter_id: "matter-1",
+      original_name: "client-report-v1.pdf",
+      content_type: "application/pdf",
+      blob_pathname: "vault/client-report-v1.pdf",
+      archived_at: null,
+      audience: "client",
+    }]);
+    vaultMocks.downloadFromVault.mockResolvedValue({
+      statusCode: 200,
+      stream: new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode("version one"));
+          controller.close();
+        },
+      }),
+      blob: { contentType: "application/pdf" },
+    });
+
+    const response = await GET(new Request(`http://localhost/api/messages/attachments/doc-1?versionId=${versionId}`), {
+      params: Promise.resolve({ id: "doc-1" }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe("version one");
+    expect(vaultMocks.downloadFromVault).toHaveBeenCalledWith("vault/client-report-v1.pdf");
   });
 });

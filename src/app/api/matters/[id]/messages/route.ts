@@ -173,13 +173,24 @@ export async function POST(
   let threadId = crypto.randomUUID();
   if (parsed.data.parentMessageId) {
     const parents = await sql`
-      SELECT id, COALESCE(thread_id, id) AS thread_id
+      SELECT id, COALESCE(thread_id, id) AS thread_id, audience
       FROM engagement_messages
       WHERE id = ${parsed.data.parentMessageId}
         AND matter_id = ${id}
       LIMIT 1
     `;
     if (parents.length === 0) return NextResponse.json({ error: "Parent message not found" }, { status: 400 });
+    const parentAudience = String(parents[0].audience) as ResourceAudience;
+    if (parentAudience === "internal" && !hasCapability(access, "messages.internal_view")) {
+      return NextResponse.json({ error: "Parent message not found" }, { status: 404 });
+    }
+    if ((context.role === "client" && parentAudience !== "client")
+      || (context.role === "contractor" && parentAudience !== "contractor")) {
+      return NextResponse.json({ error: "This account cannot reply to that audience." }, { status: 403 });
+    }
+    if (context.role === "super_admin" || context.role === "admin") {
+      audience = parentAudience;
+    }
     threadId = String(parents[0].thread_id);
   }
   const messageId = crypto.randomUUID();

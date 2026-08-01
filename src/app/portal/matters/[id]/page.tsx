@@ -30,6 +30,10 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 import { usePortalAccess } from "@/components/portal/access-provider";
 import {
+  MessageAttachment,
+  type MessageAttachmentRecord,
+} from "@/components/portal/message-attachment";
+import {
   EmptyState,
   HealthBadge,
   MATTER_STATUS_LABELS,
@@ -103,14 +107,7 @@ type Message = {
   attachments?: Attachment[];
 };
 
-type Attachment = {
-  id: string;
-  name: string;
-  original_name: string;
-  content_type: string;
-  size_bytes: number;
-  created_at: string;
-};
+type Attachment = MessageAttachmentRecord;
 
 type Document = {
   id: string;
@@ -197,6 +194,7 @@ export default function EngagementWorkspacePage() {
   const [error, setError] = useState("");
   const [saving, setSaving] = useState("");
   const [messageAttachmentCount, setMessageAttachmentCount] = useState(0);
+  const [replyThreadId, setReplyThreadId] = useState<string | null>(null);
   const [showDetails, setShowDetails] = useState(false);
   const [showTask, setShowTask] = useState(false);
   const [showRequirement, setShowRequirement] = useState(false);
@@ -255,6 +253,23 @@ export default function EngagementWorkspacePage() {
     items: items.filter((item) => item.stage_key === stage),
     tasks: tasks.filter((task) => task.stage_key === stage),
   })), [items, tasks]);
+  const messageThreads = useMemo(() => {
+    const grouped = new Map<string, Message[]>();
+    for (const message of messages) {
+      const key = message.thread_id || message.id;
+      grouped.set(key, [...(grouped.get(key) ?? []), message]);
+    }
+    return Array.from(grouped, ([id, rows]) => ({
+      id,
+      messages: rows.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()),
+    })).sort((a, b) => {
+      const aLatest = a.messages[a.messages.length - 1];
+      const bLatest = b.messages[b.messages.length - 1];
+      return new Date(bLatest.created_at).getTime() - new Date(aLatest.created_at).getTime();
+    });
+  }, [messages]);
+  const replyThread = messageThreads.find((thread) => thread.id === replyThreadId);
+  const replyParent = replyThread?.messages[replyThread.messages.length - 1];
 
   async function patchMatter(patch: Record<string, unknown>, overrideReason?: string) {
     if (!matter) return false;
@@ -376,6 +391,7 @@ export default function EngagementWorkspacePage() {
       form.reset();
       setMessageAttachmentCount(0);
       setMessages((rows) => [...rows, result.message]);
+      setReplyThreadId(result.message.thread_id || result.message.id);
     }
     setSaving("");
   }
@@ -394,28 +410,6 @@ export default function EngagementWorkspacePage() {
       URL.revokeObjectURL(url);
     } catch (downloadError) {
       setError(downloadError instanceof Error ? downloadError.message : "Document download failed.");
-    } finally {
-      setSaving("");
-    }
-  }
-
-  async function downloadAttachment(attachment: Attachment) {
-    setSaving(attachment.id);
-    setError("");
-    try {
-      const response = await fetch(`/api/messages/attachments/${attachment.id}`);
-      if (!response.ok) {
-        const result = await response.json().catch(() => null);
-        throw new Error(result?.error ?? "Attachment download failed.");
-      }
-      const url = URL.createObjectURL(await response.blob());
-      const anchor = window.document.createElement("a");
-      anchor.href = url;
-      anchor.download = attachment.original_name || attachment.name;
-      anchor.click();
-      URL.revokeObjectURL(url);
-    } catch (downloadError) {
-      setError(downloadError instanceof Error ? downloadError.message : "Attachment download failed.");
     } finally {
       setSaving("");
     }
@@ -591,19 +585,34 @@ export default function EngagementWorkspacePage() {
       {tab === "updates" && (
         <div className="portal-card portal-engagement-updates">
           <header className="portal-section-actions"><div><p className="portal-eyebrow">Engagement record</p><h2>Updates</h2><span>Audience controls determine who can read each update.</span></div><Link href="/portal/inbox" className="portal-secondary-button">Open inbox</Link></header>
-          <div className="portal-update-list">
-            {messages.length === 0 ? <EmptyState icon={MessageSquare} title="No updates" description="The first engagement message will establish this correspondence record." /> : messages.map((message) => (
-              <article key={message.id}>
-                <span className="portal-avatar">{message.sender_name.slice(0, 1)}</span>
-                <div><header><strong>{message.sender_name}</strong><span>{message.sender_role.replace("_", " ")} · {formatDate(message.created_at, true)}</span><em className={`portal-audience portal-audience-${message.audience}`}>{message.audience === "internal" ? <Lock size={11} /> : <Users size={11} />}{message.audience}</em></header><p>{message.body}</p>{Boolean(message.attachments?.length) && <div className="portal-message-attachments">{message.attachments?.map((attachment) => <button type="button" key={attachment.id} onClick={() => downloadAttachment(attachment)} disabled={saving === attachment.id}><Paperclip size={13} /><span>{attachment.name}</span><small>{Math.max(1, Math.round(attachment.size_bytes / 1024))} KB</small><Download size={13} /></button>)}</div>}</div>
-              </article>
-            ))}
+          <div className="portal-update-list portal-conversation-list">
+            {messages.length === 0 ? <EmptyState icon={MessageSquare} title="No updates" description="The first engagement message will establish this correspondence record." /> : messageThreads.map((thread) => {
+              const first = thread.messages[0];
+              return (
+                <section className={replyThreadId === thread.id ? "is-replying" : ""} key={thread.id}>
+                  <header className="portal-conversation-header">
+                    <div><strong>{first.subject || `Conversation with ${first.audience}`}</strong><span>{thread.messages.length} message{thread.messages.length === 1 ? "" : "s"}</span></div>
+                    {can("messages.send") && <button type="button" className="portal-secondary-button" onClick={() => setReplyThreadId(thread.id)}>Reply</button>}
+                  </header>
+                  {thread.messages.map((message) => (
+                    <article key={message.id}>
+                      <span className="portal-avatar">{message.sender_name.slice(0, 1)}</span>
+                      <div><header><strong>{message.sender_name}</strong><span>{message.sender_role.replace("_", " ")} · {formatDate(message.created_at, true)}</span><em className={`portal-audience portal-audience-${message.audience}`}>{message.audience === "internal" ? <Lock size={11} /> : <Users size={11} />}{message.audience}</em></header><p>{message.body}</p>{Boolean(message.attachments?.length) && <div className="portal-message-attachments">{message.attachments?.map((attachment) => <MessageAttachment key={attachment.id} attachment={attachment} />)}</div>}</div>
+                    </article>
+                  ))}
+                </section>
+              );
+            })}
           </div>
           {can("messages.send") && (
             <form className="portal-engagement-compose" onSubmit={sendMessage}>
-              <textarea name="body" required maxLength={10_000} placeholder="Write an engagement update…" />
+              {replyParent ? (
+                <div className="portal-reply-context"><span>Replying to {replyParent.sender_name} · visible to {replyParent.audience}</span><button type="button" onClick={() => setReplyThreadId(null)}>Start new conversation</button></div>
+              ) : <input className="portal-compose-subject" name="subject" maxLength={180} placeholder="Subject (optional)" />}
+              {replyParent && <input type="hidden" name="parentMessageId" value={replyParent.id} />}
+              <textarea name="body" required maxLength={10_000} placeholder={replyParent ? "Write a reply…" : "Write an engagement update…"} />
               <footer>
-                {(access.role === "super_admin" || access.role === "admin") ? <select name="audience" defaultValue="client"><option value="client">Client visible</option><option value="contractor">Contractor visible</option>{can("messages.internal_view") && <option value="internal">Internal only</option>}</select> : <input type="hidden" name="audience" value={access.role === "client" ? "client" : "contractor"} />}
+                {replyParent ? <input type="hidden" name="audience" value={replyParent.audience} /> : (access.role === "super_admin" || access.role === "admin") ? <select name="audience" defaultValue="client"><option value="client">Client visible</option><option value="contractor">Contractor visible</option>{can("messages.internal_view") && <option value="internal">Internal only</option>}</select> : <input type="hidden" name="audience" value={access.role === "client" ? "client" : "contractor"} />}
                 <label className="portal-attachment-button"><Paperclip size={14} />{messageAttachmentCount ? `${messageAttachmentCount} file${messageAttachmentCount === 1 ? "" : "s"}` : "Attach files"}<input type="file" name="attachments" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.webp,.heic,.txt,.csv" onChange={(event) => setMessageAttachmentCount(event.target.files?.length ?? 0)} /></label>
                 <button className="portal-primary-button" disabled={saving === "message"}><Send size={14} />{saving === "message" ? "Sending…" : "Send update"}</button>
               </footer>

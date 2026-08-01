@@ -2,7 +2,6 @@
 
 import {
   Inbox,
-  Download,
   Lock,
   MessageSquare,
   Paperclip,
@@ -15,15 +14,12 @@ import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 import { EmptyState, PageHeader } from "@/components/portal/portal-ui";
+import {
+  MessageAttachment,
+  type MessageAttachmentRecord,
+} from "@/components/portal/message-attachment";
 
-type Attachment = {
-  id: string;
-  name: string;
-  original_name: string;
-  content_type: string;
-  size_bytes: number;
-  created_at: string;
-};
+type Attachment = MessageAttachmentRecord;
 
 type Message = {
   id: string;
@@ -40,7 +36,18 @@ type Message = {
   parent_message_id?: string | null;
   created_at: string;
   is_read: boolean;
+  thread_key?: string;
+  thread_latest_at?: string;
+  thread_unread_count?: number;
   attachments?: Attachment[];
+};
+
+type ThreadSummary = {
+  id: string;
+  messages: Message[];
+  latest: Message;
+  subject: string;
+  unreadCount: number;
 };
 
 function messageTime(value: string): string {
@@ -53,7 +60,7 @@ function messageTime(value: string): string {
 
 export default function InboxPage() {
   const [messages, setMessages] = useState<Message[]>([]);
-  const [selectedId, setSelectedId] = useState("");
+  const [selectedThreadId, setSelectedThreadId] = useState("");
   const [query, setQuery] = useState("");
   const [unreadOnly, setUnreadOnly] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -71,8 +78,14 @@ export default function InboxPage() {
       const response = await fetch(`/api/portal/inbox?${params.toString()}`, { cache: "no-store" });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error ?? "Messages could not be loaded.");
-      setMessages(data.messages ?? []);
-      setSelectedId((current) => current || data.messages?.[0]?.id || "");
+      const nextMessages: Message[] = data.messages ?? [];
+      setMessages(nextMessages);
+      const firstThreadId = nextMessages[0]?.thread_key || nextMessages[0]?.thread_id || nextMessages[0]?.id || "";
+      setSelectedThreadId((current) => (
+        current && nextMessages.some((message) => (message.thread_key || message.thread_id || message.id) === current)
+          ? current
+          : firstThreadId
+      ));
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Messages could not be loaded.");
     } finally {
@@ -85,23 +98,38 @@ export default function InboxPage() {
     return () => window.clearTimeout(timeout);
   }, [load, query]);
 
-  const selected = messages.find((message) => message.id === selectedId);
-  const thread = useMemo(() => selected
-    ? messages.filter((message) =>
-        message.matter_id === selected.matter_id
-        && (message.thread_id || message.id) === (selected.thread_id || selected.id),
-      ).sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
-    : [], [messages, selected]);
+  const threads = useMemo<ThreadSummary[]>(() => {
+    const grouped = new Map<string, Message[]>();
+    for (const message of messages) {
+      const key = message.thread_key || message.thread_id || message.id;
+      grouped.set(key, [...(grouped.get(key) ?? []), message]);
+    }
+    return Array.from(grouped, ([id, rows]) => {
+      const ordered = rows.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+      const latest = ordered[ordered.length - 1];
+      return {
+        id,
+        messages: ordered,
+        latest,
+        subject: ordered.find((message) => message.subject)?.subject || latest.matter_title,
+        unreadCount: ordered.filter((message) => !message.is_read).length,
+      };
+    }).sort((a, b) => new Date(b.latest.created_at).getTime() - new Date(a.latest.created_at).getTime());
+  }, [messages]);
+  const selectedThread = threads.find((thread) => thread.id === selectedThreadId);
+  const selected = selectedThread?.latest;
 
-  async function choose(message: Message) {
-    setSelectedId(message.id);
-    if (!message.is_read) {
+  async function choose(thread: ThreadSummary) {
+    setSelectedThreadId(thread.id);
+    if (thread.unreadCount > 0) {
       await fetch("/api/portal/inbox", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messageId: message.id }),
+        body: JSON.stringify({ threadId: thread.id }),
       });
-      setMessages((rows) => rows.map((row) => row.id === message.id ? { ...row, is_read: true } : row));
+      setMessages((rows) => rows.map((row) => (
+        (row.thread_key || row.thread_id || row.id) === thread.id ? { ...row, is_read: true } : row
+      )));
     }
   }
 
@@ -125,25 +153,9 @@ export default function InboxPage() {
       form.reset();
       setAttachmentCount(0);
       await load();
-      setSelectedId(result.message.id);
+      setSelectedThreadId(result.message.thread_id || result.message.id);
     }
     setSending(false);
-  }
-
-  async function downloadAttachment(attachment: Attachment) {
-    setError("");
-    const response = await fetch(`/api/messages/attachments/${attachment.id}`);
-    if (!response.ok) {
-      const result = await response.json().catch(() => null);
-      setError(result?.error ?? "The attachment could not be downloaded.");
-      return;
-    }
-    const url = URL.createObjectURL(await response.blob());
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = attachment.original_name || attachment.name;
-    anchor.click();
-    URL.revokeObjectURL(url);
   }
 
   return (
@@ -165,20 +177,20 @@ export default function InboxPage() {
         <div className="portal-inbox-list">
           {loading ? (
             <div className="portal-board-loading">{Array.from({ length: 8 }, (_, index) => <span key={index} />)}</div>
-          ) : messages.length === 0 ? (
+          ) : threads.length === 0 ? (
             <EmptyState icon={Inbox} title="No messages in this view" description="New permitted correspondence will appear here." />
-          ) : messages.map((message) => (
+          ) : threads.map((thread) => (
             <button
-              key={message.id}
-              className={`${selectedId === message.id ? "is-selected" : ""} ${message.is_read ? "" : "is-unread"}`}
-              onClick={() => choose(message)}
+              key={thread.id}
+              className={`${selectedThreadId === thread.id ? "is-selected" : ""} ${thread.unreadCount ? "is-unread" : ""}`}
+              onClick={() => choose(thread)}
             >
-              <span className="portal-avatar">{message.sender_name.slice(0, 1)}</span>
+              <span className="portal-avatar">{thread.latest.sender_name.slice(0, 1)}</span>
               <div>
-                <header><strong>{message.sender_name}</strong><time>{messageTime(message.created_at)}</time></header>
-                <p>{message.subject || message.matter_title}</p>
-                <span>{message.body}</span>
-                <small>{message.matter_title}</small>
+                <header><strong>{thread.latest.sender_name}</strong><time>{messageTime(thread.latest.created_at)}</time></header>
+                <p>{thread.subject}</p>
+                <span>{thread.latest.body}</span>
+                <small>{thread.latest.matter_title} · {thread.messages.length} message{thread.messages.length === 1 ? "" : "s"}{thread.unreadCount ? ` · ${thread.unreadCount} unread` : ""}</small>
               </div>
             </button>
           ))}
@@ -193,10 +205,10 @@ export default function InboxPage() {
                 <span className={`portal-audience portal-audience-${selected.audience}`}>{selected.audience === "internal" ? <Lock size={12} /> : <Users size={12} />}{selected.audience}</span>
               </header>
               <div className="portal-thread-messages">
-                {thread.map((message) => (
+                {selectedThread?.messages.map((message) => (
                   <article key={message.id}>
                     <span className="portal-avatar">{message.sender_name.slice(0, 1)}</span>
-                    <div><header><strong>{message.sender_name}</strong><span>{message.sender_role.replace("_", " ")} · {messageTime(message.created_at)}</span></header><p>{message.body}</p>{Boolean(message.attachments?.length) && <div className="portal-message-attachments">{message.attachments?.map((attachment) => <button type="button" key={attachment.id} onClick={() => downloadAttachment(attachment)}><Paperclip size={13} /><span>{attachment.name}</span><small>{Math.max(1, Math.round(attachment.size_bytes / 1024))} KB</small><Download size={13} /></button>)}</div>}</div>
+                    <div><header><strong>{message.sender_name}</strong><span>{message.sender_role.replace("_", " ")} · {messageTime(message.created_at)}</span></header><p>{message.body}</p>{Boolean(message.attachments?.length) && <div className="portal-message-attachments">{message.attachments?.map((attachment) => <MessageAttachment key={attachment.id} attachment={attachment} />)}</div>}</div>
                   </article>
                 ))}
               </div>
