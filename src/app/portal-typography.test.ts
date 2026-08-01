@@ -18,6 +18,7 @@ describe("Private Office typography and alignment", () => {
   });
 
   it("keeps controls and operational rows on a consistent vertical rhythm", () => {
+    expect(portalStyles).toMatch(/\.portal-page-header \{[\s\S]*?align-items: flex-end;/);
     expect(portalStyles).toMatch(/\.portal-primary-button,[\s\S]*?min-height: 42px;/);
     expect(portalStyles).toMatch(/\.portal-filter-bar select,[\s\S]*?min-height: 42px;/);
     expect(portalStyles).toMatch(/\.portal-board-row \{[\s\S]*?min-height: 60px;/);
