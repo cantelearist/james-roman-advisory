@@ -4,7 +4,7 @@ export const SCHEMA_MIGRATION_VERSIONS = {
   consultations: "2026-07-26-consultations-v1",
   vault: "2026-07-26-vault-v1",
   access: "2026-07-26-access-v1",
-  operations: "2026-07-26-operations-v1",
+  operations: "2026-08-01-operations-v2",
 } as const;
 
 export const SCHEMA_MIGRATION_MANIFEST = [

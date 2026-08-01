@@ -2,8 +2,10 @@
 
 import {
   Inbox,
+  Download,
   Lock,
   MessageSquare,
+  Paperclip,
   RefreshCw,
   Search,
   Send,
@@ -13,6 +15,15 @@ import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 import { EmptyState, PageHeader } from "@/components/portal/portal-ui";
+
+type Attachment = {
+  id: string;
+  name: string;
+  original_name: string;
+  content_type: string;
+  size_bytes: number;
+  created_at: string;
+};
 
 type Message = {
   id: string;
@@ -29,6 +40,7 @@ type Message = {
   parent_message_id?: string | null;
   created_at: string;
   is_read: boolean;
+  attachments?: Attachment[];
 };
 
 function messageTime(value: string): string {
@@ -46,6 +58,7 @@ export default function InboxPage() {
   const [unreadOnly, setUnreadOnly] = useState(false);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [attachmentCount, setAttachmentCount] = useState(0);
   const [error, setError] = useState("");
 
   const load = useCallback(async () => {
@@ -99,24 +112,38 @@ export default function InboxPage() {
     setError("");
     const form = event.currentTarget;
     const data = new FormData(form);
+    data.set("audience", selected.audience);
+    data.set("parentMessageId", selected.id);
+    if (selected.subject) data.set("subject", selected.subject);
     const response = await fetch(`/api/matters/${selected.matter_id}/messages`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        body: data.get("body"),
-        audience: selected.audience,
-        subject: selected.subject,
-        parentMessageId: selected.id,
-      }),
+      body: data,
     });
     const result = await response.json();
     if (!response.ok) setError(result.error ?? "Reply could not be sent.");
     else {
       form.reset();
+      setAttachmentCount(0);
       await load();
       setSelectedId(result.message.id);
     }
     setSending(false);
+  }
+
+  async function downloadAttachment(attachment: Attachment) {
+    setError("");
+    const response = await fetch(`/api/messages/attachments/${attachment.id}`);
+    if (!response.ok) {
+      const result = await response.json().catch(() => null);
+      setError(result?.error ?? "The attachment could not be downloaded.");
+      return;
+    }
+    const url = URL.createObjectURL(await response.blob());
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = attachment.original_name || attachment.name;
+    anchor.click();
+    URL.revokeObjectURL(url);
   }
 
   return (
@@ -169,13 +196,13 @@ export default function InboxPage() {
                 {thread.map((message) => (
                   <article key={message.id}>
                     <span className="portal-avatar">{message.sender_name.slice(0, 1)}</span>
-                    <div><header><strong>{message.sender_name}</strong><span>{message.sender_role.replace("_", " ")} · {messageTime(message.created_at)}</span></header><p>{message.body}</p></div>
+                    <div><header><strong>{message.sender_name}</strong><span>{message.sender_role.replace("_", " ")} · {messageTime(message.created_at)}</span></header><p>{message.body}</p>{Boolean(message.attachments?.length) && <div className="portal-message-attachments">{message.attachments?.map((attachment) => <button type="button" key={attachment.id} onClick={() => downloadAttachment(attachment)}><Paperclip size={13} /><span>{attachment.name}</span><small>{Math.max(1, Math.round(attachment.size_bytes / 1024))} KB</small><Download size={13} /></button>)}</div>}</div>
                   </article>
                 ))}
               </div>
               <form className="portal-reply-form" onSubmit={reply}>
                 <textarea name="body" required maxLength={10_000} placeholder={`Reply to ${selected.audience} thread…`} aria-label="Reply" />
-                <footer><span>{selected.audience === "internal" ? <Lock size={12} /> : <Users size={12} />}Visible to {selected.audience}</span><button className="portal-primary-button" disabled={sending}><Send size={14} />{sending ? "Sending…" : "Send reply"}</button></footer>
+                <footer><span>{selected.audience === "internal" ? <Lock size={12} /> : <Users size={12} />}Visible to {selected.audience}</span><div className="portal-compose-actions"><label className="portal-attachment-button"><Paperclip size={14} />{attachmentCount ? `${attachmentCount} file${attachmentCount === 1 ? "" : "s"}` : "Attach files"}<input type="file" name="attachments" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.webp,.heic,.txt,.csv" onChange={(event) => setAttachmentCount(event.target.files?.length ?? 0)} /></label><button className="portal-primary-button" disabled={sending}><Send size={14} />{sending ? "Sending…" : "Send reply"}</button></div></footer>
               </form>
             </>
           )}
