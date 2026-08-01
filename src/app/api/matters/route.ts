@@ -7,6 +7,7 @@ import {
   hasCapability,
 } from "@/lib/access-control";
 import { getAuthContext } from "@/lib/auth";
+import { parseEngagementBoardQuery } from "@/lib/engagement-board";
 import { assertRequiredSchemaVersions } from "@/lib/schema-readiness";
 
 const createMatterSchema = z.object({
@@ -33,8 +34,8 @@ export async function GET(req: Request) {
   const ownerId = searchParams.get("owner_id");
   const search = searchParams.get("q")?.trim() || null;
   const searchPattern = search ? `%${search.slice(0, 120)}%` : null;
-  const limit = Math.min(Math.max(Number(searchParams.get("limit") ?? 100), 1), 250);
-  const offset = Math.max(Number(searchParams.get("offset") ?? 0), 0);
+  const { sort, direction, limit, offset, page } = parseEngagementBoardQuery(searchParams);
+  const fetchLimit = limit + 1;
   const canPublishDocuments = hasCapability(access, "documents.publish");
   const canViewDocuments = hasCapability(access, "documents.view");
   const canViewTasks = hasCapability(access, "timeline.view");
@@ -90,8 +91,40 @@ export async function GET(req: Request) {
           OR c.name ILIKE ${searchPattern}
           OR COALESCE(p.address, '') ILIKE ${searchPattern}
         )
-      ORDER BY m.updated_at DESC
-      LIMIT ${limit} OFFSET ${offset}
+      ORDER BY
+        CASE WHEN ${sort}::TEXT = 'title' AND ${direction}::TEXT = 'asc' THEN LOWER(m.title) END ASC NULLS LAST,
+        CASE WHEN ${sort}::TEXT = 'title' AND ${direction}::TEXT = 'desc' THEN LOWER(m.title) END DESC NULLS LAST,
+        CASE WHEN ${sort}::TEXT = 'client' AND ${direction}::TEXT = 'asc' THEN LOWER(c.name) END ASC NULLS LAST,
+        CASE WHEN ${sort}::TEXT = 'client' AND ${direction}::TEXT = 'desc' THEN LOWER(c.name) END DESC NULLS LAST,
+        CASE WHEN ${sort}::TEXT = 'status' AND ${direction}::TEXT = 'asc' THEN
+          CASE m.status WHEN 'intake' THEN 1 WHEN 'assessment' THEN 2 WHEN 'review' THEN 3 WHEN 'vendor_evaluation' THEN 4 WHEN 'oversight' THEN 5 WHEN 'clearance' THEN 6 WHEN 'closed' THEN 7 ELSE 8 END
+        END ASC NULLS LAST,
+        CASE WHEN ${sort}::TEXT = 'status' AND ${direction}::TEXT = 'desc' THEN
+          CASE m.status WHEN 'intake' THEN 1 WHEN 'assessment' THEN 2 WHEN 'review' THEN 3 WHEN 'vendor_evaluation' THEN 4 WHEN 'oversight' THEN 5 WHEN 'clearance' THEN 6 WHEN 'closed' THEN 7 ELSE 8 END
+        END DESC NULLS LAST,
+        CASE WHEN ${sort}::TEXT = 'owner' AND ${direction}::TEXT = 'asc' THEN LOWER(owner.name) END ASC NULLS LAST,
+        CASE WHEN ${sort}::TEXT = 'owner' AND ${direction}::TEXT = 'desc' THEN LOWER(owner.name) END DESC NULLS LAST,
+        CASE WHEN ${sort}::TEXT = 'priority' AND ${direction}::TEXT = 'asc' THEN
+          CASE m.priority WHEN 'low' THEN 1 WHEN 'normal' THEN 2 WHEN 'high' THEN 3 WHEN 'urgent' THEN 4 ELSE 5 END
+        END ASC NULLS LAST,
+        CASE WHEN ${sort}::TEXT = 'priority' AND ${direction}::TEXT = 'desc' THEN
+          CASE m.priority WHEN 'low' THEN 1 WHEN 'normal' THEN 2 WHEN 'high' THEN 3 WHEN 'urgent' THEN 4 ELSE 5 END
+        END DESC NULLS LAST,
+        CASE WHEN ${sort}::TEXT = 'health' AND ${direction}::TEXT = 'asc' THEN
+          CASE m.health WHEN 'on_track' THEN 1 WHEN 'at_risk' THEN 2 WHEN 'blocked' THEN 3 ELSE 4 END
+        END ASC NULLS LAST,
+        CASE WHEN ${sort}::TEXT = 'health' AND ${direction}::TEXT = 'desc' THEN
+          CASE m.health WHEN 'on_track' THEN 1 WHEN 'at_risk' THEN 2 WHEN 'blocked' THEN 3 ELSE 4 END
+        END DESC NULLS LAST,
+        CASE WHEN ${sort}::TEXT = 'due_date' AND ${direction}::TEXT = 'asc' THEN m.due_date END ASC NULLS LAST,
+        CASE WHEN ${sort}::TEXT = 'due_date' AND ${direction}::TEXT = 'desc' THEN m.due_date END DESC NULLS LAST,
+        CASE WHEN ${sort}::TEXT = 'next_action_due_at' AND ${direction}::TEXT = 'asc' THEN m.next_action_due_at END ASC NULLS LAST,
+        CASE WHEN ${sort}::TEXT = 'next_action_due_at' AND ${direction}::TEXT = 'desc' THEN m.next_action_due_at END DESC NULLS LAST,
+        CASE WHEN ${sort}::TEXT = 'updated_at' AND ${direction}::TEXT = 'asc' THEN m.updated_at END ASC NULLS LAST,
+        CASE WHEN ${sort}::TEXT = 'updated_at' AND ${direction}::TEXT = 'desc' THEN m.updated_at END DESC NULLS LAST,
+        m.updated_at DESC,
+        m.id ASC
+      LIMIT ${fetchLimit} OFFSET ${offset}
     `;
   } else {
     // Assigned admins, contractors, and clients: active memberships only.
@@ -162,21 +195,55 @@ export async function GET(req: Request) {
           OR c.name ILIKE ${searchPattern}
           OR COALESCE(p.address, '') ILIKE ${searchPattern}
         )
-      ORDER BY m.updated_at DESC
-      LIMIT ${limit} OFFSET ${offset}
+      ORDER BY
+        CASE WHEN ${sort}::TEXT = 'title' AND ${direction}::TEXT = 'asc' THEN LOWER(m.title) END ASC NULLS LAST,
+        CASE WHEN ${sort}::TEXT = 'title' AND ${direction}::TEXT = 'desc' THEN LOWER(m.title) END DESC NULLS LAST,
+        CASE WHEN ${sort}::TEXT = 'client' AND ${direction}::TEXT = 'asc' THEN LOWER(c.name) END ASC NULLS LAST,
+        CASE WHEN ${sort}::TEXT = 'client' AND ${direction}::TEXT = 'desc' THEN LOWER(c.name) END DESC NULLS LAST,
+        CASE WHEN ${sort}::TEXT = 'status' AND ${direction}::TEXT = 'asc' THEN
+          CASE m.status WHEN 'intake' THEN 1 WHEN 'assessment' THEN 2 WHEN 'review' THEN 3 WHEN 'vendor_evaluation' THEN 4 WHEN 'oversight' THEN 5 WHEN 'clearance' THEN 6 WHEN 'closed' THEN 7 ELSE 8 END
+        END ASC NULLS LAST,
+        CASE WHEN ${sort}::TEXT = 'status' AND ${direction}::TEXT = 'desc' THEN
+          CASE m.status WHEN 'intake' THEN 1 WHEN 'assessment' THEN 2 WHEN 'review' THEN 3 WHEN 'vendor_evaluation' THEN 4 WHEN 'oversight' THEN 5 WHEN 'clearance' THEN 6 WHEN 'closed' THEN 7 ELSE 8 END
+        END DESC NULLS LAST,
+        CASE WHEN ${sort}::TEXT = 'owner' AND ${direction}::TEXT = 'asc' THEN LOWER(owner.name) END ASC NULLS LAST,
+        CASE WHEN ${sort}::TEXT = 'owner' AND ${direction}::TEXT = 'desc' THEN LOWER(owner.name) END DESC NULLS LAST,
+        CASE WHEN ${sort}::TEXT = 'priority' AND ${direction}::TEXT = 'asc' THEN
+          CASE m.priority WHEN 'low' THEN 1 WHEN 'normal' THEN 2 WHEN 'high' THEN 3 WHEN 'urgent' THEN 4 ELSE 5 END
+        END ASC NULLS LAST,
+        CASE WHEN ${sort}::TEXT = 'priority' AND ${direction}::TEXT = 'desc' THEN
+          CASE m.priority WHEN 'low' THEN 1 WHEN 'normal' THEN 2 WHEN 'high' THEN 3 WHEN 'urgent' THEN 4 ELSE 5 END
+        END DESC NULLS LAST,
+        CASE WHEN ${sort}::TEXT = 'health' AND ${direction}::TEXT = 'asc' THEN
+          CASE m.health WHEN 'on_track' THEN 1 WHEN 'at_risk' THEN 2 WHEN 'blocked' THEN 3 ELSE 4 END
+        END ASC NULLS LAST,
+        CASE WHEN ${sort}::TEXT = 'health' AND ${direction}::TEXT = 'desc' THEN
+          CASE m.health WHEN 'on_track' THEN 1 WHEN 'at_risk' THEN 2 WHEN 'blocked' THEN 3 ELSE 4 END
+        END DESC NULLS LAST,
+        CASE WHEN ${sort}::TEXT = 'due_date' AND ${direction}::TEXT = 'asc' THEN m.due_date END ASC NULLS LAST,
+        CASE WHEN ${sort}::TEXT = 'due_date' AND ${direction}::TEXT = 'desc' THEN m.due_date END DESC NULLS LAST,
+        CASE WHEN ${sort}::TEXT = 'next_action_due_at' AND ${direction}::TEXT = 'asc' THEN m.next_action_due_at END ASC NULLS LAST,
+        CASE WHEN ${sort}::TEXT = 'next_action_due_at' AND ${direction}::TEXT = 'desc' THEN m.next_action_due_at END DESC NULLS LAST,
+        CASE WHEN ${sort}::TEXT = 'updated_at' AND ${direction}::TEXT = 'asc' THEN m.updated_at END ASC NULLS LAST,
+        CASE WHEN ${sort}::TEXT = 'updated_at' AND ${direction}::TEXT = 'desc' THEN m.updated_at END DESC NULLS LAST,
+        m.updated_at DESC,
+        m.id ASC
+      LIMIT ${fetchLimit} OFFSET ${offset}
     `;
   }
 
+  const hasMore = matters.length > limit;
+  const pageMatters = matters.slice(0, limit);
   const visibleMatters = hasCapability(access, "clients.view")
-    ? matters
-    : matters.map((matter) => {
+    ? pageMatters
+    : pageMatters.map((matter) => {
         const result = { ...matter };
         delete result.client_email;
         return result;
       });
   return NextResponse.json({
     matters: visibleMatters,
-    page: { limit, offset, hasMore: visibleMatters.length === limit },
+    page: { number: page, limit, offset, hasMore },
   });
 }
 
