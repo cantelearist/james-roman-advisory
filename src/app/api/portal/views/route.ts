@@ -13,9 +13,19 @@ const viewSchema = z.object({
   name: z.string().trim().min(1).max(80),
   viewType: z.enum(["table", "kanban", "calendar", "workload"]).default("table"),
   filters: z.record(z.string(), z.unknown()).default({}),
-  sorting: z.array(z.unknown()).max(20).default([]),
-  grouping: z.unknown().nullable().optional(),
-  columns: z.array(z.string()).max(50).default([]),
+  sorting: z.array(z.object({
+    field: z.string().trim().min(1).max(80),
+    direction: z.enum(["asc", "desc"]),
+  })).max(20).default([]),
+  grouping: z.object({ field: z.string().trim().min(1).max(80) }).nullable().optional(),
+  columns: z.union([
+    z.array(z.string().trim().min(1).max(80)).max(50),
+    z.object({
+      order: z.array(z.string().trim().min(1).max(80)).max(50),
+      visible: z.array(z.string().trim().min(1).max(80)).max(50),
+      density: z.enum(["comfortable", "compact"]),
+    }),
+  ]).default([]),
   sharing: z.enum(["private", "workspace"]).default("private"),
 });
 
