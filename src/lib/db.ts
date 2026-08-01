@@ -1,5 +1,9 @@
 import { neon } from "@neondatabase/serverless";
 
+import {
+  ADMIN_DEFAULT_CAPABILITIES,
+  CONTRACTOR_DEFAULT_CAPABILITIES,
+} from "./permission-policy";
 import { SCHEMA_MIGRATION_VERSIONS } from "./schema-migration-manifest";
 
 export type MatterType =
@@ -450,42 +454,6 @@ async function ensureVaultTablesImpl() {
   await markSchemaVersion(version);
 }
 
-const ADMIN_OPERATIONS_PERMISSIONS = [
-  "users.invite",
-  "clients.view",
-  "clients.manage",
-  "engagements.view",
-  "engagements.create",
-  "engagements.update",
-  "engagements.assign",
-  "documents.view",
-  "documents.upload",
-  "documents.publish",
-  "documents.delete",
-  "documents.generate_pdf",
-  "timeline.view",
-  "timeline.internal_view",
-  "timeline.manage",
-  "messages.view",
-  "messages.send",
-  "messages.internal_view",
-  "contracts.view",
-  "contracts.manage",
-  "finance.view",
-  "finance.manage",
-  "audit.view",
-] as const;
-
-const CONTRACTOR_STANDARD_PERMISSIONS = [
-  "engagements.view",
-  "documents.view",
-  "documents.upload",
-  "timeline.view",
-  "timeline.manage",
-  "messages.view",
-  "messages.send",
-] as const;
-
 /**
  * Ensures the hybrid role/capability model exists and backfills legacy client
  * ownership into explicit engagement memberships.
@@ -588,7 +556,7 @@ async function ensureAccessControlTablesImpl() {
       'profile_admin_operations',
       'Operations Admin',
       'admin',
-      CAST(${JSON.stringify(ADMIN_OPERATIONS_PERMISSIONS)} AS JSONB),
+      CAST(${JSON.stringify(ADMIN_DEFAULT_CAPABILITIES)} AS JSONB),
       TRUE
     )
     ON CONFLICT (id) DO NOTHING
@@ -609,7 +577,7 @@ async function ensureAccessControlTablesImpl() {
       'profile_contractor_standard',
       'Engagement Contractor',
       'contractor',
-      CAST(${JSON.stringify(CONTRACTOR_STANDARD_PERMISSIONS)} AS JSONB),
+      CAST(${JSON.stringify(CONTRACTOR_DEFAULT_CAPABILITIES)} AS JSONB),
       TRUE
     )
     ON CONFLICT (id) DO NOTHING

@@ -2395,6 +2395,13 @@
   gap: 5px;
 }
 
+.portal-form-note {
+  color: var(--portal-muted);
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 2px 0 0;
+}
+
 .portal-field-wide {
   grid-column: 1 / -1;
 }
@@ -3276,6 +3283,8 @@
   align-items: center;
   border-bottom: 1px solid var(--portal-line);
   display: flex;
+  gap: 12px;
+  justify-content: space-between;
   min-height: 63px;
   padding: 12px 16px;
 }

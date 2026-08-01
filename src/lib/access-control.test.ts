@@ -6,6 +6,11 @@ import {
   profileCapabilityCeiling,
   type PortalAccessSummary,
 } from "@/lib/access-control";
+import { CAPABILITIES } from "@/lib/data-model";
+import {
+  ROLE_PERMISSION_MATRIX,
+  SUPER_ADMIN_ONLY_CAPABILITIES,
+} from "@/lib/permission-policy";
 
 function summary(
   role: PortalAccessSummary["role"],
@@ -16,6 +21,38 @@ function summary(
 }
 
 describe("Private Office capability policy", () => {
+  it("defines one complete policy entry for every role", () => {
+    expect(Object.keys(ROLE_PERMISSION_MATRIX).sort()).toEqual([
+      "admin",
+      "client",
+      "contractor",
+      "super_admin",
+    ]);
+    expect(ROLE_PERMISSION_MATRIX.super_admin.defaultCapabilities).toEqual(CAPABILITIES);
+    expect(ROLE_PERMISSION_MATRIX.super_admin.scope).toBe("global");
+    expect(ROLE_PERMISSION_MATRIX.client.scope).toBe("assigned");
+    expect(ROLE_PERMISSION_MATRIX.contractor.scope).toBe("assigned");
+    expect(ROLE_PERMISSION_MATRIX.admin.scope).toBe("configurable");
+  });
+
+  it("keeps every default profile inside its role ceiling", () => {
+    for (const role of ["admin", "contractor"] as const) {
+      const policy = ROLE_PERMISSION_MATRIX[role];
+      expect(policy.authority).toBe("profile");
+      for (const capability of policy.defaultCapabilities) {
+        expect(policy.capabilityCeiling, `${role}: ${capability}`).toContain(capability);
+      }
+    }
+  });
+
+  it("reserves access and workspace settings for Super Admin", () => {
+    expect(SUPER_ADMIN_ONLY_CAPABILITIES).toEqual(["access.manage", "settings.manage"]);
+    for (const role of ["admin", "contractor", "client"] as const) {
+      expect(ROLE_PERMISSION_MATRIX[role].capabilityCeiling).not.toContain("access.manage");
+      expect(ROLE_PERMISSION_MATRIX[role].capabilityCeiling).not.toContain("settings.manage");
+    }
+  });
+
   it("gives Super Admin authority regardless of profile capabilities", () => {
     const access = summary("super_admin", [], "global");
     expect(hasCapability(access, "access.manage")).toBe(true);

@@ -11,48 +11,22 @@ import {
   type UserRole,
 } from "@/lib/data-model";
 import { getDb } from "@/lib/db";
+import {
+  ADMIN_PROFILE_CAPABILITIES,
+  CLIENT_CAPABILITIES,
+  CONTRACTOR_PROFILE_CAPABILITIES,
+  profileCapabilityCeiling,
+  SUPER_ADMIN_ONLY_CAPABILITIES,
+} from "@/lib/permission-policy";
 import { assertRequiredSchemaVersions } from "@/lib/schema-readiness";
 
-const CLIENT_CAPABILITIES: readonly Capability[] = [
-  "clients.view",
-  "engagements.view",
-  "documents.view",
-  "documents.upload",
-  "timeline.view",
-  "messages.view",
-  "messages.send",
-  "contracts.view",
-  "finance.view",
-];
-
-export const SUPER_ADMIN_ONLY_CAPABILITIES: readonly Capability[] = [
-  "access.manage",
-  "settings.manage",
-];
-
-export const ADMIN_PROFILE_CAPABILITIES: readonly Capability[] = CAPABILITIES.filter(
-  (capability) => !SUPER_ADMIN_ONLY_CAPABILITIES.includes(capability),
-);
-
-export const CONTRACTOR_PROFILE_CAPABILITIES: readonly Capability[] = [
-  "engagements.view",
-  "engagements.update",
-  "documents.view",
-  "documents.upload",
-  "documents.generate_pdf",
-  "timeline.view",
-  "timeline.manage",
-  "messages.view",
-  "messages.send",
-  "contracts.view",
-  "finance.view",
-];
-
-export function profileCapabilityCeiling(
-  role: "admin" | "contractor",
-): readonly Capability[] {
-  return role === "admin" ? ADMIN_PROFILE_CAPABILITIES : CONTRACTOR_PROFILE_CAPABILITIES;
-}
+export {
+  ADMIN_PROFILE_CAPABILITIES,
+  CLIENT_CAPABILITIES,
+  CONTRACTOR_PROFILE_CAPABILITIES,
+  profileCapabilityCeiling,
+  SUPER_ADMIN_ONLY_CAPABILITIES,
+};
 
 export type PortalAccessSummary = {
   role: UserRole;

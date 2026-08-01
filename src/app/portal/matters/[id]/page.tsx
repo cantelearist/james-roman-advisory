@@ -49,6 +49,7 @@ import {
 
 type Matter = {
   id: string;
+  client_id: string;
   title: string;
   type: string;
   status: string;
@@ -202,6 +203,7 @@ export default function EngagementWorkspacePage() {
   const [messageAttachmentCount, setMessageAttachmentCount] = useState(0);
   const [replyThreadId, setReplyThreadId] = useState<string | null>(null);
   const [showDetails, setShowDetails] = useState(false);
+  const [showClientDetails, setShowClientDetails] = useState(false);
   const [showTask, setShowTask] = useState(false);
   const [showRequirement, setShowRequirement] = useState(false);
   const [workflowReason, setWorkflowReason] = useState<{
@@ -302,6 +304,35 @@ export default function EngagementWorkspacePage() {
     setTransition(null);
     setSaving("");
     return true;
+  }
+
+  async function updateClient(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!matter) return;
+    const form = new FormData(event.currentTarget);
+    setSaving("client");
+    setError("");
+    const response = await fetch(`/api/clients/${matter.client_id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: form.get("name"),
+        email: form.get("email") || null,
+        phone: form.get("phone") || null,
+      }),
+    });
+    const data = await response.json();
+    if (!response.ok) setError(data.error ?? "The client record could not be updated.");
+    else {
+      setMatter((current) => current ? {
+        ...current,
+        client_name: data.client.name,
+        client_email: data.client.email,
+        client_phone: data.client.phone,
+      } : current);
+      setShowClientDetails(false);
+    }
+    setSaving("");
   }
 
   async function updateWorkflow(item: WorkflowItem, status: WorkflowItem["status"], blockerReason?: string, overrideReason?: string) {
@@ -442,6 +473,8 @@ export default function EngagementWorkspacePage() {
       && !["completed", "waived"].includes(item.status);
   });
   const canDefineWorkflow = can("timeline.manage") && canCreateWorkflowRecords(access.role);
+  const canManageClientIdentity = can("clients.manage")
+    && (access.role === "super_admin" || (access.role === "admin" && access.scope === "global"));
   const canUpdateAssignedWorkflow = (assigneeUserId?: string | null) => can("timeline.manage")
     && canUpdateWorkflowRecord({
       role: access.role,
@@ -539,7 +572,7 @@ export default function EngagementWorkspacePage() {
           </div>
           <aside>
             <section className="portal-card portal-record-panel">
-              <header><div><p className="portal-eyebrow">Principal</p><h2>Client</h2></div></header>
+              <header><div><p className="portal-eyebrow">Principal</p><h2>Client</h2></div>{canManageClientIdentity && <button className="portal-secondary-button" onClick={() => setShowClientDetails(true)}><Settings2 size={13} />Edit client</button>}</header>
               <dl className="portal-contact-list">
                 <div><dt>Name</dt><dd>{matter.client_name}</dd></div>
                 {matter.client_email && <div><dt>Email</dt><dd><a href={`mailto:${matter.client_email}`}>{matter.client_email}</a></dd></div>}
@@ -730,6 +763,22 @@ export default function EngagementWorkspacePage() {
               <label className="portal-field"><span>Next action due</span><input name="nextActionDueAt" type="datetime-local" defaultValue={matter.next_action_due_at?.slice(0, 16) || ""} /></label>
               <label className="portal-field"><span>Internal context</span><textarea name="notes" rows={7} defaultValue={matter.notes || ""} /></label>
               <footer><button type="button" className="portal-secondary-button" onClick={() => setShowDetails(false)}>Cancel</button><button className="portal-primary-button" disabled={saving === "matter"}>{saving === "matter" ? "Saving…" : "Save changes"}</button></footer>
+            </form>
+          </aside>
+        </div>
+      )}
+
+      {showClientDetails && (
+        <div className="portal-drawer-overlay" role="dialog" aria-modal="true" aria-labelledby="edit-client-title">
+          <button className="portal-command-scrim" onClick={() => setShowClientDetails(false)} aria-label="Close client details" />
+          <aside className="portal-drawer">
+            <header><div><p className="portal-eyebrow">Principal record</p><h2 id="edit-client-title">Edit client</h2></div><button className="portal-icon-button" onClick={() => setShowClientDetails(false)} aria-label="Close client editor"><X size={18} /></button></header>
+            <form onSubmit={updateClient}>
+              <label className="portal-field"><span>Name</span><input name="name" defaultValue={matter.client_name} required /></label>
+              <label className="portal-field"><span>Email</span><input name="email" type="email" defaultValue={matter.client_email || ""} /></label>
+              <label className="portal-field"><span>Phone</span><input name="phone" type="tel" defaultValue={matter.client_phone || ""} /></label>
+              <p className="portal-form-note">This principal record may be shared by more than one engagement. Changes are audited.</p>
+              <footer><button type="button" className="portal-secondary-button" onClick={() => setShowClientDetails(false)}>Cancel</button><button className="portal-primary-button" disabled={saving === "client"}>{saving === "client" ? "Saving…" : "Save client"}</button></footer>
             </form>
           </aside>
         </div>
