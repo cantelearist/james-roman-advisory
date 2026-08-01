@@ -31,6 +31,10 @@ migration, and live disposable-database access-matrix verification.
 - Administrative access, invitation, automation, and workspace-setting
   mutations commit their mandatory audit record in the same database
   transaction.
+- Production application requests connect as `jra_app_runtime`, a non-owner
+  role without schema DDL, role-administration, inheritance, or RLS-bypass
+  authority. The owner credential is isolated to the reviewer-protected GitHub
+  migration environment.
 
 ## Protected surfaces
 

@@ -105,27 +105,43 @@ Stage 1B migration and runtime-cutover status:
 - the DDL implementations remain available only to the protected migration
   runner.
 
-The final Stage 1 credential boundary requires:
+The final Stage 1 credential boundary was completed on 2026-08-01 for commit
+`ae68075bfe136b0ae28237f6fe17f7d5091fc25e`:
 
-1. create or identify a least-privilege runtime role that cannot `CREATE`,
-   `ALTER`, manage roles, own application tables, or bypass RLS;
-2. verify the complete application access matrix with that credential on a
-   disposable branch;
-3. replace the owner-scoped Vercel runtime URL with the verified runtime URL;
-4. prove the live runtime credential cannot perform DDL;
-5. retain the owner URL only in the protected GitHub migration environment.
+- protected preflight run
+  [`30689119415`](https://github.com/cantelearist/james-roman-advisory/actions/runs/30689119415)
+  confirmed all six schema versions and that the target role was absent;
+- protected provisioning run
+  [`30689293392`](https://github.com/cantelearist/james-roman-advisory/actions/runs/30689293392)
+  created and validated `jra_app_runtime` across 38 application relations;
+- validation confirmed no relation ownership, inherited roles, administrative
+  attributes, RLS bypass, or schema-creation authority, and proved denial of
+  `CREATE TABLE`, `ALTER TABLE`, and `CREATE ROLE` inside forced-roll-back
+  transactions;
+- both protected runs reported runtime URL fingerprint
+  `f574628752307bef6e31ff91bbd64aeab2bed07f3725300d4fb563c47ae1541e`;
+- the URL with that fingerprint replaced Vercel Production `DATABASE_URL` as a
+  Sensitive value;
+- production deployment `dpl_GUibxupTc3sujzEDSJ211sCaWXkz` became Ready,
+  passed isolated application DML and provider-accepted email-dispatch checks,
+  and then received both production domains;
+- final public and protected-route smoke checks passed with no HTTP 500 logs;
+- the temporary `RUNTIME_DATABASE_PASSWORD` was deleted from the GitHub
+  environment and local handoff storage; and
+- the owner URL remains only in the reviewer-protected GitHub migration
+  environment.
 
-The protected production role workflow and disposable real-login gate now
-encode these checks. Stage 1 is complete only after the Vercel production
-secret is replaced, the new deployment passes production smoke, and the
-temporary runtime-password handoff secret is deleted.
+Stage 1 is complete. Production RLS remains disabled pending Stage 2
+transaction context and Stage 3 policy enforcement.
 
-Only after those checks should Stage 1 be marked complete. Production RLS must
-remain disabled throughout this stage.
-
-Rollback for the request-time cutover: redeploy the previous application
-version. The migration ledger remains intact. No RLS policy or runtime
-credential cutover occurs in this release.
+Rollback after the runtime credential cutover must preserve a valid database
+credential for the selected deployment. Restore both production domains to a
+known-good deployment whose credential remains valid; if necessary, restore
+the owner URL temporarily as Vercel's Sensitive Production `DATABASE_URL` and
+redeploy while the runtime role is investigated. Do not delete
+`jra_app_runtime` during ordinary rollback because active deployments may
+still depend on it. The migration ledger remains intact and RLS remains
+unchanged.
 
 ### Stage 2 — transactional request context
 
