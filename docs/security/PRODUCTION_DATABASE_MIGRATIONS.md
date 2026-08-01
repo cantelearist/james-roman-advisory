@@ -56,6 +56,33 @@ logs. After the same fingerprinted URL is installed as Vercel's
 production-only `DATABASE_URL`, delete `RUNTIME_DATABASE_PASSWORD` from the
 GitHub environment.
 
+### Production cutover record — 2026-08-01
+
+The runtime credential cutover completed for exact `main` commit
+`ae68075bfe136b0ae28237f6fe17f7d5091fc25e`:
+
+- protected preflight run
+  [`30689119415`](https://github.com/cantelearist/james-roman-advisory/actions/runs/30689119415)
+  confirmed all six required schema versions and target-role absence;
+- protected provisioning run
+  [`30689293392`](https://github.com/cantelearist/james-roman-advisory/actions/runs/30689293392)
+  validated `jra_app_runtime` against 38 application relations and proved the
+  configured DDL and role-administration denials;
+- both runs reported the same runtime URL fingerprint,
+  `f574628752307bef6e31ff91bbd64aeab2bed07f3725300d4fb563c47ae1541e`;
+- that fingerprinted value replaced Vercel Production `DATABASE_URL` as a
+  Sensitive value;
+- replacement deployment `dpl_GUibxupTc3sujzEDSJ211sCaWXkz` passed isolated
+  application DML, provider-accepted email dispatch, public-route,
+  protected-route, and HTTP-500-log checks before and after both production
+  domains were assigned;
+  and
+- `RUNTIME_DATABASE_PASSWORD` was deleted after verification. The owner URL
+  remains only in the protected migration environment.
+
+This record contains identifiers and fingerprints only. It must never contain
+the runtime password or either database connection URL.
+
 ## Required sequence
 
 1. Select `main` in the workflow dispatcher.
@@ -74,14 +101,16 @@ the ordinary `DATABASE_URL`, and incorrect confirmation phrases.
 
 ## Rollback
 
-This workflow installs only reviewed schema and ledger entries. It does not
-enable RLS or change the Vercel runtime credential. Ordinary request paths use
-the read-only required-version assertion; only the protected migration runner
-may invoke the DDL compatibility facades.
+The migration workflow installs only reviewed schema and ledger entries. The
+separate runtime-role workflow and the recorded 2026-08-01 deployment changed
+the Vercel runtime credential but did not enable RLS. Ordinary request paths
+use the read-only required-version assertion; only the protected migration
+runner may invoke the DDL compatibility facades.
 
 If application behavior changes unexpectedly:
 
-1. restore the previous application deployment and both production aliases;
+1. restore a known-good application deployment with a still-valid database
+   credential and both production aliases;
 2. leave the migration ledger intact;
 3. inspect the exact migration and affected table before another deployment.
 
