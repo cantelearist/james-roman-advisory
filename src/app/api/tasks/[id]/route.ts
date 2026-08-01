@@ -9,6 +9,10 @@ import {
 import { getAuthContext } from "@/lib/auth";
 import { getDb, logMatterEvent } from "@/lib/db";
 import { assertRequiredSchemaVersions } from "@/lib/schema-readiness";
+import {
+  canUpdateWorkflowRecord,
+  isContractorTaskStatusPatch,
+} from "@/lib/workflow-authority";
 
 export const runtime = "nodejs";
 
@@ -39,6 +43,16 @@ export async function PATCH(
   const access = await getPortalAccessSummary(context);
   if (!(await authorizeCapability(context, access, "timeline.manage", { matterId: String(current.matter_id) }))) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+  if (!canUpdateWorkflowRecord({
+    role: context.role,
+    userId: context.userId,
+    assigneeUserId: current.assignee_user_id ? String(current.assignee_user_id) : null,
+  })) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+  if (context.role === "contractor" && !isContractorTaskStatusPatch(parsed.data)) {
+    return NextResponse.json({ error: "Contractors may update only the status of assigned work" }, { status: 403 });
   }
   if (parsed.data.audience === "internal" && !hasCapability(access, "timeline.internal_view")) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });

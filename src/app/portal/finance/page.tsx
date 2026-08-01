@@ -229,7 +229,9 @@ export default function FinancePage() {
       <PageHeader
         eyebrow="Contracts and billing"
         title="Finance"
-        description="Draft, review, issue and reconcile engagement financial records."
+        description={access.role === "client"
+          ? "Review issued contracts, invoices, change orders and payment status."
+          : "Draft, review, issue and reconcile engagement financial records."}
         actions={
           <>
             <button className="portal-secondary-button" onClick={load}><RefreshCw size={14} />Refresh</button>

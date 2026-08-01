@@ -12,6 +12,7 @@ import { getDb, logMatterEvent } from "@/lib/db";
 import type { ResourceAudience } from "@/lib/data-model";
 import { notifyEngagementMembers } from "@/lib/notifications";
 import { assertRequiredSchemaVersions } from "@/lib/schema-readiness";
+import { canCreateWorkflowRecords } from "@/lib/workflow-authority";
 
 export const runtime = "nodejs";
 
@@ -89,6 +90,9 @@ export async function POST(request: Request) {
   const access = await getPortalAccessSummary(context);
   if (!(await authorizeCapability(context, access, "timeline.manage", { matterId: parsed.data.matterId }))) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+  if (!canCreateWorkflowRecords(context.role)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
   if (parsed.data.audience === "internal" && !hasCapability(access, "timeline.internal_view")) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });

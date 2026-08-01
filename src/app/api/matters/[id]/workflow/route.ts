@@ -10,6 +10,10 @@ import { getAuthContext } from "@/lib/auth";
 import { getDb, logMatterEvent } from "@/lib/db";
 import type { ResourceAudience } from "@/lib/data-model";
 import { assertRequiredSchemaVersions } from "@/lib/schema-readiness";
+import {
+  canCreateWorkflowRecords,
+  canUpdateWorkflowRecord,
+} from "@/lib/workflow-authority";
 
 export const runtime = "nodejs";
 
@@ -78,6 +82,9 @@ export async function POST(
   const access = await getPortalAccessSummary(context);
   if (!(await authorizeCapability(context, access, "timeline.manage", { matterId: id }))) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+  if (!canCreateWorkflowRecords(context.role)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
   const parsed = createSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Invalid workflow item", issues: parsed.error.issues }, { status: 400 });
@@ -154,13 +161,27 @@ export async function PATCH(
     LIMIT 1
   `;
   if (current.length === 0) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (!canUpdateWorkflowRecord({
+    role: context.role,
+    userId: context.userId,
+    assigneeUserId: current[0].assignee_user_id ? String(current[0].assignee_user_id) : null,
+  })) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
   if (parsed.data.evidenceDocumentId) {
     const document = await sql`
-      SELECT id FROM documents
+      SELECT id, visibility, publication_status FROM documents
       WHERE id = ${parsed.data.evidenceDocumentId} AND matter_id = ${id}
       LIMIT 1
     `;
     if (document.length === 0) return NextResponse.json({ error: "Evidence document not found" }, { status: 400 });
+    if (context.role === "contractor" && !canReceiveAudience(
+      context.role,
+      String(document[0].visibility) as ResourceAudience,
+      String(document[0].publication_status) === "published" ? "published" : "pending_review",
+    )) {
+      return NextResponse.json({ error: "Evidence document not found" }, { status: 400 });
+    }
   }
   const completed = parsed.data.status === "completed" || parsed.data.status === "waived";
   const rows = await sql`

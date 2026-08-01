@@ -41,6 +41,10 @@ import {
   PriorityBadge,
   StatusBadge,
 } from "@/components/portal/portal-ui";
+import {
+  canCreateWorkflowRecords,
+  canUpdateWorkflowRecord,
+} from "@/lib/workflow-authority";
 
 type Matter = {
   id: string;
@@ -73,6 +77,7 @@ type WorkflowItem = {
   item_type: "requirement" | "deliverable" | "approval";
   is_required: boolean;
   status: "pending" | "in_progress" | "completed" | "blocked" | "waived";
+  assignee_user_id?: string | null;
   assignee_name?: string | null;
   due_date?: string | null;
   blocker_reason?: string | null;
@@ -427,6 +432,21 @@ export default function EngagementWorkspacePage() {
   const currentStageItems = items.filter((item) => item.stage_key === matter.status && item.is_required);
   const currentStageComplete = currentStageItems.length > 0
     && currentStageItems.every((item) => ["completed", "waived"].includes(item.status));
+  const currentStageIndex = STAGES.indexOf(matter.status);
+  const unresolvedPriorItems = items.filter((item) => {
+    const itemStageIndex = STAGES.indexOf(item.stage_key);
+    return item.is_required
+      && itemStageIndex >= 0
+      && itemStageIndex < currentStageIndex
+      && !["completed", "waived"].includes(item.status);
+  });
+  const canDefineWorkflow = can("timeline.manage") && canCreateWorkflowRecords(access.role);
+  const canUpdateAssignedWorkflow = (assigneeUserId?: string | null) => can("timeline.manage")
+    && canUpdateWorkflowRecord({
+      role: access.role,
+      userId: user.id,
+      assigneeUserId,
+    });
 
   return (
     <div className="portal-page portal-engagement-page">
@@ -452,6 +472,16 @@ export default function EngagementWorkspacePage() {
         <div className="portal-control-next"><span>Next action</span><strong>{matter.next_action || "Not set"}</strong><small>{formatDate(matter.next_action_due_at)}</small></div>
         <div><span>Due</span><strong>{formatDate(matter.due_date)}</strong></div>
       </section>
+
+      {access.role !== "client" && unresolvedPriorItems.length > 0 && (
+        <div className="portal-integrity-warning" role="alert">
+          <AlertTriangle size={17} />
+          <div>
+            <strong>Earlier workflow requirements remain unresolved</strong>
+            <p>{MATTER_STATUS_LABELS[matter.status]} is recorded as the current stage, but {unresolvedPriorItems.length} required item{unresolvedPriorItems.length === 1 ? "" : "s"} from earlier stages still need completion or a documented Super Admin waiver.</p>
+          </div>
+        </div>
+      )}
 
       {access.role !== "client" && <section className="portal-stage-rail" aria-label="Engagement stages">
         {workflowByStage.map((stage, index) => {
@@ -502,8 +532,8 @@ export default function EngagementWorkspacePage() {
               </dl>
             </section>
             <section className="portal-card portal-record-panel">
-              <header><div><p className="portal-eyebrow">Internal record</p><h2>Engagement context</h2></div></header>
-              {matter.notes ? <p className="portal-record-copy">{matter.notes}</p> : <EmptyState icon={ClipboardList} title="No context recorded" description="Internal engagement context can be added through Edit details." />}
+              <header><div><p className="portal-eyebrow">{access.role === "client" ? "Engagement file" : access.role === "contractor" ? "Assignment record" : "Internal record"}</p><h2>Engagement context</h2></div></header>
+              {matter.notes ? <p className="portal-record-copy">{matter.notes}</p> : <EmptyState icon={ClipboardList} title="No context recorded" description={access.role === "client" ? "Published engagement context will appear here." : access.role === "contractor" ? "Context shared with your assignment will appear here." : "Internal engagement context can be added through Edit details."} />}
             </section>
           </div>
           <aside>
@@ -530,7 +560,7 @@ export default function EngagementWorkspacePage() {
         <div className="portal-workspace-work">
           <header className="portal-section-actions">
             <div><p className="portal-eyebrow">Truthful workflow</p><h2>Requirements and assigned work</h2><span>Stage completion is based only on persisted requirements below.</span></div>
-            {can("timeline.manage") && <div><button className="portal-secondary-button" onClick={() => setShowRequirement(true)}><Plus size={14} />Requirement</button><button className="portal-primary-button" onClick={() => setShowTask(true)}><Plus size={14} />Task</button></div>}
+            {canDefineWorkflow && <div><button className="portal-secondary-button" onClick={() => setShowRequirement(true)}><Plus size={14} />Requirement</button><button className="portal-primary-button" onClick={() => setShowTask(true)}><Plus size={14} />Task</button></div>}
           </header>
           <div className="portal-workflow-stages">
             {workflowByStage.map((stage) => {
@@ -549,14 +579,14 @@ export default function EngagementWorkspacePage() {
                       {stage.items.map((item) => (
                         <div className={`portal-workflow-row portal-workflow-${item.status}`} key={item.id}>
                           <button
-                            disabled={!can("timeline.manage") || saving === item.id}
+                            disabled={!canUpdateAssignedWorkflow(item.assignee_user_id) || saving === item.id}
                             onClick={() => updateWorkflow(item, item.status === "completed" ? "pending" : "completed")}
                             aria-label={`${item.status === "completed" ? "Reopen" : "Complete"} ${item.title}`}
                           >{item.status === "completed" && <Check size={12} />}</button>
                           <div><strong>{item.title}</strong><span>{item.item_type}{item.is_required ? " · required" : " · optional"}{item.assignee_name ? ` · ${item.assignee_name}` : ""}</span>{item.blocker_reason && <small><ShieldAlert size={11} />{item.blocker_reason}</small>}</div>
                           <span className={`portal-workflow-state portal-workflow-state-${item.status}`}>{item.status.replace("_", " ")}</span>
                           <time>{formatDate(item.due_date)}</time>
-                          {can("timeline.manage") && item.status !== "completed" && <select value="" onChange={(event) => {
+                          {canUpdateAssignedWorkflow(item.assignee_user_id) && item.status !== "completed" && <select value="" onChange={(event) => {
                             const value = event.target.value as WorkflowItem["status"];
                             if (value === "blocked" || value === "waived") {
                               setWorkflowReason({ item, status: value });
@@ -566,11 +596,11 @@ export default function EngagementWorkspacePage() {
                       ))}
                       {stage.tasks.map((task) => (
                         <div className={`portal-workflow-row portal-task-workflow portal-workflow-${task.status}`} key={task.id}>
-                          <button disabled={!can("timeline.manage") || saving === task.id} onClick={() => updateTask(task, task.status === "completed" ? "open" : "completed")}>{task.status === "completed" && <Check size={12} />}</button>
+                          <button disabled={!canUpdateAssignedWorkflow(task.assignee_user_id) || saving === task.id} onClick={() => updateTask(task, task.status === "completed" ? "open" : "completed")}>{task.status === "completed" && <Check size={12} />}</button>
                           <div><strong>{task.title}</strong><span>Task{task.assignee_name ? ` · ${task.assignee_name}` : " · unassigned"} · {task.audience}</span></div>
                           <PriorityBadge priority={task.priority} />
                           <time>{formatDate(task.due_date)}</time>
-                          {can("timeline.manage") && <select value={task.status} onChange={(event) => updateTask(task, event.target.value as Task["status"])}><option value="open">Open</option><option value="in_progress">In progress</option><option value="completed">Completed</option><option value="cancelled">Cancelled</option></select>}
+                          {canUpdateAssignedWorkflow(task.assignee_user_id) && <select value={task.status} onChange={(event) => updateTask(task, event.target.value as Task["status"])}><option value="open">Open</option><option value="in_progress">In progress</option><option value="completed">Completed</option>{access.role !== "contractor" && <option value="cancelled">Cancelled</option>}</select>}
                         </div>
                       ))}
                     </>

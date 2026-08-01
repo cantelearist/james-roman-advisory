@@ -189,15 +189,20 @@ export async function PATCH(
     const normalizedOverrideReason = typeof overrideReason === "string"
       ? overrideReason.trim()
       : "";
-    const incomplete = await sql`
-      SELECT id, title, status
+    const incompleteRows = await sql`
+      SELECT id, title, status, stage_key
       FROM engagement_workflow_items
       WHERE matter_id = ${id}
-        AND stage_key = ${String(current.status)}
         AND is_required = TRUE
         AND status NOT IN ('completed', 'waived')
       ORDER BY position, created_at
     `;
+    const incomplete = incompleteRows.filter((item) => {
+      const stageIndex = VALID_STATUSES.indexOf(String(item.stage_key) as MatterStatus);
+      return !["completed", "waived"].includes(String(item.status))
+        && stageIndex >= 0
+        && stageIndex < nextIndex;
+    });
     if (incomplete.length > 0 && !(context.role === "super_admin" && normalizedOverrideReason.length >= 5)) {
       return NextResponse.json({
         error: "Complete or resolve the required workflow items before advancing this engagement.",

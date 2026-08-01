@@ -481,6 +481,7 @@ const CONTRACTOR_STANDARD_PERMISSIONS = [
   "documents.view",
   "documents.upload",
   "timeline.view",
+  "timeline.manage",
   "messages.view",
   "messages.send",
 ] as const;
@@ -591,6 +592,16 @@ async function ensureAccessControlTablesImpl() {
       TRUE
     )
     ON CONFLICT (id) DO NOTHING
+  `;
+  await sql`
+    UPDATE permission_profiles
+    SET permissions = CASE
+      WHEN permissions ? 'timeline.manage' THEN permissions
+      ELSE permissions || '["timeline.manage"]'::JSONB
+    END,
+    updated_at = NOW()
+    WHERE id = 'profile_contractor_standard'
+      AND is_system = TRUE
   `;
   await sql`
     INSERT INTO permission_profiles (id, name, role_type, permissions, is_system)

@@ -62,7 +62,7 @@ function formatDate(value: string): string {
 }
 
 export default function DocumentsPage() {
-  const { can } = usePortalAccess();
+  const { can, access } = usePortalAccess();
   const [documents, setDocuments] = useState<DocumentRecord[]>([]);
   const [matters, setMatters] = useState<Matter[]>([]);
   const [loading, setLoading] = useState(true);
@@ -267,7 +267,11 @@ export default function DocumentsPage() {
       <PageHeader
         eyebrow="Secure record"
         title="Documents"
-        description="Review, publish and retrieve engagement files through the authenticated vault."
+        description={access.role === "client"
+          ? "View and share permitted documents for your engagement."
+          : access.role === "contractor"
+            ? "Upload and retrieve permitted documents for your assigned engagements."
+            : "Review, publish and retrieve engagement files through the authenticated vault."}
         actions={
           <>
             <button className="portal-secondary-button" onClick={load}><RefreshCw size={14} />Refresh</button>
