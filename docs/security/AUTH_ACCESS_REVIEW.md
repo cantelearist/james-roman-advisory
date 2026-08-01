@@ -12,6 +12,7 @@ threaded correspondence, and secure attachment-history verification.
 - Role families are `super_admin`, `admin`, `contractor`, and `client`.
 - Super Admin has fixed system authority. Admin and Contractor authority comes from a Super Admin-managed Permission Profile.
 - Admin scope may be global or limited to assigned engagements. Contractor and Client scope is always limited to active Engagement Memberships.
+- The standard Contractor profile may update the status of workflow requirements and tasks assigned to that same contractor. Contractors cannot create workflow records, edit task definitions, reassign work, cancel tasks, or waive requirements.
 - Middleware only performs the fast unauthenticated redirect. Server handlers remain authoritative.
 - Existing `clients.user_id` ownership is retained for compatibility, but `engagement_memberships` is the canonical engagement-access boundary.
 - Engagement events and documents carry an explicit audience. Clients receive only published `client` resources. Contractors receive only `contractor` resources and published `client` resources.
@@ -45,6 +46,15 @@ threaded correspondence, and secure attachment-history verification.
 operation requires a named capability. Assigned-scope requests must also pass an
 active, unexpired Engagement Membership check. Unauthorized resource identifiers
 return `404` to prevent engagement enumeration.
+
+Workflow stage transitions evaluate every required item in every stage before
+the requested target stage. A later recorded stage therefore cannot conceal
+unresolved earlier work. Only Super Admin may override the gate, and the
+override requires a reason and an audit event.
+
+The Finance route has a server-side capability gate in addition to API
+authorization. Users without `finance.view` are returned to the portal instead
+of receiving a partially rendered finance workspace.
 
 Only Super Admin can create Permission Profiles, configure Admin or Contractor
 authority, suspend accounts, or assign and revoke Engagement Memberships.

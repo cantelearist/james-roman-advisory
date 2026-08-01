@@ -1,6 +1,6 @@
 # Source of Truth — James Roman Advisory
 
-Updated 2026-07-26.
+Updated 2026-08-01.
 
 ## Stack
 
@@ -39,6 +39,7 @@ handlers call `getAuthContext()` and enforce capability and scope checks themsel
 - `clients` — client records linked by `user_id`
 - `properties`, `matters`, `matter_events`, `documents`, `file_access_events`
 - `engagement_messages` — audience-scoped Engagement File correspondence
+- `engagement_workflow_items`, `engagement_tasks` — persisted requirements and assigned work; contractor status updates are limited to the same contractor's assignments
 - `notification_deliveries` — email delivery audit records
 - `engagement_contracts`, `change_orders` — immutable commercial source records and amendments
 - `invoices`, `invoice_line_items`, `payments` — billing and provider-confirmed settlements
@@ -54,3 +55,14 @@ controlled seed operation. Distributed rate limiting requires either
 Marketplace aliases `KV_REST_API_URL` plus `KV_REST_API_TOKEN`.
 
 No hosted authentication-provider variables belong in this project.
+
+## Workflow authority
+
+`src/lib/workflow-authority.ts` owns the role-specific workflow mutation rules.
+Admin and Super Admin may define and edit workflow records when their profile
+and engagement scope permit it. Contractors may update only the status of work
+assigned to their own user ID. Clients cannot mutate workflow records.
+
+Engagement stage transitions check all required workflow items before the
+target stage, not only the engagement's currently recorded stage. The UI also
+surfaces historical inconsistencies, but the API is the authoritative gate.

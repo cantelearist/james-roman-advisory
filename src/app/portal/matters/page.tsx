@@ -646,11 +646,11 @@ export default function EngagementBoardPage() {
   return (
     <div className="portal-page portal-board-page">
       <PageHeader
-        eyebrow="Operating board"
+        eyebrow={access.role === "client" ? "Engagement file" : access.role === "contractor" ? "Assigned portfolio" : "Operating board"}
         title="Engagements"
         description={matters.length > 0
-          ? `Showing ${((page - 1) * pageSize) + 1}–${((page - 1) * pageSize) + matters.length} · Ownership, urgency and next actions`
-          : "Ownership, urgency and next actions"}
+          ? `Showing ${((page - 1) * pageSize) + 1}–${((page - 1) * pageSize) + matters.length} · ${access.role === "client" ? "Your active advisory records" : access.role === "contractor" ? "Work permitted for your assignments" : "Ownership, urgency and next actions"}`
+          : access.role === "client" ? "Your active advisory records" : access.role === "contractor" ? "Work permitted for your assignments" : "Ownership, urgency and next actions"}
         actions={
           <>
             <button className="portal-secondary-button" onClick={load}><RefreshCw size={14} />Refresh</button>

@@ -164,7 +164,7 @@ describe("Engagement workflow transition gates", () => {
     sql
       .mockResolvedValueOnce([{ id: "matter-1", status: "assessment", version: 3 }])
       .mockResolvedValueOnce([{ value: { requireWorkflowGates: true } }])
-      .mockResolvedValueOnce([{ id: "item-1", title: "Publish assessment evidence", status: "pending" }]);
+      .mockResolvedValueOnce([{ id: "item-1", title: "Publish assessment evidence", status: "pending", stage_key: "assessment" }]);
 
     const response = await PATCH(
       new Request("http://localhost/api/matters/matter-1", {
@@ -178,7 +178,7 @@ describe("Engagement workflow transition gates", () => {
 
     expect(response.status).toBe(409);
     expect(body.blockers).toEqual([
-      { id: "item-1", title: "Publish assessment evidence", status: "pending" },
+      { id: "item-1", title: "Publish assessment evidence", status: "pending", stage_key: "assessment" },
     ]);
     expect(body.overrideAvailable).toBe(false);
     expect(sql).toHaveBeenCalledTimes(3);
@@ -199,7 +199,7 @@ describe("Engagement workflow transition gates", () => {
     sql
       .mockResolvedValueOnce([{ id: "matter-1", status: "assessment", version: 3 }])
       .mockResolvedValueOnce([{ value: { requireWorkflowGates: true } }])
-      .mockResolvedValueOnce([{ id: "item-1", title: "Publish assessment evidence", status: "blocked" }])
+      .mockResolvedValueOnce([{ id: "item-1", title: "Publish assessment evidence", status: "blocked", stage_key: "assessment" }])
       .mockResolvedValueOnce([{ id: "matter-1", status: "review", version: 4 }]);
 
     const response = await PATCH(
@@ -223,6 +223,32 @@ describe("Engagement workflow transition gates", () => {
         incompleteItemIds: ["item-1"],
       }),
     }));
+  });
+
+  it("refuses to skip unresolved requirements in intermediate stages", async () => {
+    sql
+      .mockResolvedValueOnce([{ id: "matter-1", status: "assessment", version: 3 }])
+      .mockResolvedValueOnce([{ value: { requireWorkflowGates: true } }])
+      .mockResolvedValueOnce([
+        { id: "item-current", title: "Assessment complete", status: "completed", stage_key: "assessment" },
+        { id: "item-review", title: "Recommendation approved", status: "pending", stage_key: "review" },
+        { id: "item-target", title: "Field progress documented", status: "pending", stage_key: "oversight" },
+      ]);
+
+    const response = await PATCH(
+      new Request("http://localhost/api/matters/matter-1", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "oversight", version: 3 }),
+      }),
+      { params: Promise.resolve({ id: "matter-1" }) },
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(body.blockers).toEqual([
+      { id: "item-review", title: "Recommendation approved", status: "pending", stage_key: "review" },
+    ]);
   });
 
   it("rejects stale inline edits with an optimistic concurrency conflict", async () => {

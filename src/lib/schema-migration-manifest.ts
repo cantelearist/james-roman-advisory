@@ -3,7 +3,7 @@ export const SCHEMA_MIGRATION_VERSIONS = {
   auth: "2026-07-26-auth-v1",
   consultations: "2026-07-26-consultations-v1",
   vault: "2026-07-26-vault-v1",
-  access: "2026-07-26-access-v1",
+  access: "2026-08-01-access-v2",
   operations: "2026-08-01-operations-v2",
 } as const;
 
