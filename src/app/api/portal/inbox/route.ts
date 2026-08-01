@@ -29,7 +29,7 @@ export async function GET(request: Request) {
   const global = context.role === "super_admin"
     || (context.role === "admin" && access.scope === "global");
   const rows = await sql`
-    SELECT DISTINCT
+    SELECT
       msg.id, msg.matter_id, msg.sender_id, msg.body, msg.audience,
       msg.subject, msg.thread_id, msg.parent_message_id, msg.created_at,
       sender.name AS sender_name, sender.role AS sender_role,
@@ -53,12 +53,14 @@ export async function GET(request: Request) {
     JOIN users sender ON sender.id = msg.sender_id
     LEFT JOIN message_read_receipts receipt
       ON receipt.message_id = msg.id AND receipt.user_id = ${context.userId}
-    LEFT JOIN engagement_memberships em
-      ON em.matter_id = msg.matter_id
-      AND em.user_id = ${context.userId}
-      AND em.status = 'active'
-      AND (em.expires_at IS NULL OR em.expires_at > NOW())
-    WHERE (${global} OR em.id IS NOT NULL)
+    WHERE (${global} OR EXISTS (
+      SELECT 1
+      FROM engagement_memberships em
+      WHERE em.matter_id = msg.matter_id
+        AND em.user_id = ${context.userId}
+        AND em.status = 'active'
+        AND (em.expires_at IS NULL OR em.expires_at > NOW())
+    ))
       AND (${pattern}::TEXT IS NULL
         OR msg.body ILIKE ${pattern}
         OR COALESCE(msg.subject, '') ILIKE ${pattern}
