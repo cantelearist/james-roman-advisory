@@ -59,6 +59,25 @@ of receiving a partially rendered finance workspace.
 Only Super Admin can create Permission Profiles, configure Admin or Contractor
 authority, suspend accounts, or assign and revoke Engagement Memberships.
 
+## Canonical role permission matrix
+
+The executable source of truth is `src/lib/permission-policy.ts`. Database
+profile defaults and runtime authorization both consume that policy, and the
+unit and disposable-database suites reject capability or scope drift.
+
+| Role | Authority | Scope | Default authority | Maximum authority |
+|---|---|---|---|---|
+| Super Admin | Fixed | Global | Every declared capability | Every declared capability |
+| Admin | Super Admin-managed profile | Global or assigned | Operations profile | Every capability except `access.manage` and `settings.manage` |
+| Contractor | Super Admin-managed profile | Assigned only | Engagement view, documents view/upload, timeline view/manage, messages view/send | Engagement update, PDF generation, contract view and finance view may also be granted |
+| Client | Fixed | Assigned only | Client, engagement, document, timeline, message, contract and finance viewing; document upload and message sending | Same as default; no configurable staff authority |
+
+Resource scope is enforced independently of capability. A capability never
+grants an assigned Admin, Contractor or Client access to an engagement without
+an active, unexpired membership. Client identity edits are limited to Super
+Admin and global Admin because one client record may be shared by multiple
+engagements; each change commits with a mandatory audit event.
+
 ## Required production configuration
 
 - `DATABASE_URL`
