@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 
 import {
   authorizeCapability,
@@ -26,14 +27,28 @@ export async function GET(
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
     const { id } = await params;
+    const versionIdValue = new URL(request.url).searchParams.get("versionId");
+    const versionId = versionIdValue
+      ? z.string().uuid().safeParse(versionIdValue)
+      : null;
+    if (versionId && !versionId.success) {
+      return NextResponse.json({ error: "Invalid attachment version" }, { status: 400 });
+    }
     await assertRequiredSchemaVersions();
     const sql = getDb();
     const rows = await sql`
-      SELECT d.id, d.matter_id, d.original_name, d.content_type, d.blob_pathname,
+      SELECT d.id, d.matter_id,
+             COALESCE(version.original_name, d.original_name) AS original_name,
+             COALESCE(version.content_type, d.content_type) AS content_type,
+             COALESCE(version.blob_pathname, d.blob_pathname) AS blob_pathname,
              d.archived_at, message.audience
       FROM documents d
       JOIN engagement_messages message ON message.id = d.message_id
+      LEFT JOIN document_versions version
+        ON version.document_id = d.id
+        AND version.id = ${versionId?.success ? versionId.data : null}
       WHERE d.id = ${id}
+        AND (${versionId?.success ? versionId.data : null}::TEXT IS NULL OR version.id IS NOT NULL)
       LIMIT 1
     `;
     const attachment = rows[0];

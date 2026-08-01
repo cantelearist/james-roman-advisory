@@ -21,6 +21,31 @@ function mayReceive(role: string, audience: ResourceAudience): boolean {
   return audience === "client";
 }
 
+export type NotificationPreferenceKey = "messages" | "documents" | "finance" | "tasks";
+
+export const DEFAULT_NOTIFICATION_PREFERENCES: Record<NotificationPreferenceKey, boolean> = {
+  messages: true,
+  documents: true,
+  finance: true,
+  tasks: true,
+};
+
+function preferenceKey(eventType: EngagementNotificationOptions["eventType"]): NotificationPreferenceKey {
+  if (eventType === "message_received") return "messages";
+  if (eventType === "document_uploaded") return "documents";
+  if (["invoice_issued", "invoice_reminder", "contract_issued", "change_order_issued"].includes(eventType)) {
+    return "finance";
+  }
+  return "tasks";
+}
+
+function emailEnabled(value: unknown, key: NotificationPreferenceKey): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return true;
+  const email = (value as { email?: unknown }).email;
+  if (!email || typeof email !== "object" || Array.isArray(email)) return true;
+  return (email as Record<string, unknown>)[key] !== false;
+}
+
 export type EngagementNotificationOptions = {
   matterId: string;
   actorId: string;
@@ -54,18 +79,19 @@ async function deliverEngagementNotifications(
   const settings = settingsRows[0]?.value && typeof settingsRows[0].value === "object"
     ? settingsRows[0].value as Record<string, unknown>
     : {};
-  const preference = options.eventType === "message_received"
+  const workspacePreference = options.eventType === "message_received"
     ? "notifyOnMessage"
     : options.eventType === "document_uploaded"
       ? "notifyOnDocument"
       : ["invoice_issued", "invoice_reminder", "contract_issued", "change_order_issued"].includes(options.eventType)
         ? "notifyOnInvoice"
         : "notifyOnTask";
-  if (settings[preference] === false) {
+  if (settings[workspacePreference] === false) {
     return { sent: 0, failed: 0, degraded: false };
   }
   const rows = await sql`
-    SELECT DISTINCT u.id, u.name, u.email, u.role
+    SELECT DISTINCT u.id, u.name, u.email, u.role,
+      personal.value AS notification_preferences
     FROM users u
     LEFT JOIN engagement_memberships em
       ON em.user_id = u.id
@@ -73,6 +99,7 @@ async function deliverEngagementNotifications(
       AND em.status = 'active'
       AND (em.expires_at IS NULL OR em.expires_at > NOW())
     LEFT JOIN user_permission_assignments a ON a.user_id = u.id
+    LEFT JOIN portal_settings personal ON personal.key = 'notifications:' || u.id
     WHERE u.status = 'active'
       AND u.id <> ${options.actorId}
       AND (
@@ -107,8 +134,9 @@ async function deliverEngagementNotifications(
     `;
     let status: "sent" | "failed" | "skipped" = "skipped";
     let providerId: string | null = null;
-    let errorCode: string | null = "email_not_configured";
-    if (resend) {
+    const wantsEmail = emailEnabled(recipient.notification_preferences, preferenceKey(options.eventType));
+    let errorCode: string | null = wantsEmail ? "email_not_configured" : "user_disabled";
+    if (resend && wantsEmail) {
       try {
         const result = await resend.emails.send({
           from: FROM,

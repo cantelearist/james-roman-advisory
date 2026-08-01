@@ -766,6 +766,65 @@
   font-size: 15px;
 }
 
+.portal-notification-header-actions {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.portal-notification-header-actions .portal-icon-button {
+  align-items: center;
+  border: 1px solid var(--portal-line);
+  color: var(--portal-ink-soft);
+  display: inline-flex;
+  height: 32px;
+  justify-content: center;
+  width: 32px;
+}
+
+.portal-notification-preferences {
+  padding: 16px;
+}
+
+.portal-notification-preferences > p {
+  color: var(--portal-muted);
+  font-size: 13px;
+  line-height: 1.55;
+  margin: 0 0 12px;
+}
+
+.portal-notification-preferences label {
+  align-items: center;
+  border-top: 1px solid var(--portal-line);
+  display: flex;
+  justify-content: space-between;
+  min-height: 62px;
+  padding: 9px 2px;
+}
+
+.portal-notification-preferences label span,
+.portal-notification-preferences label strong,
+.portal-notification-preferences label small {
+  display: block;
+}
+
+.portal-notification-preferences label strong {
+  color: var(--portal-ink);
+  font-size: 14px;
+}
+
+.portal-notification-preferences label small {
+  color: var(--portal-muted);
+  font-size: 12px;
+  margin-top: 3px;
+}
+
+.portal-notification-preferences input {
+  accent-color: #826d43;
+  height: 18px;
+  width: 18px;
+}
+
 .portal-notification-list {
   max-height: 520px;
   overflow-y: auto;
@@ -2798,7 +2857,13 @@
   max-width: 520px;
 }
 
-.portal-message-attachments button {
+.portal-message-attachment-row {
+  display: grid;
+  gap: 5px;
+  grid-template-columns: minmax(0, 1fr) 36px;
+}
+
+.portal-message-attachment-row > button {
   align-items: center;
   background: var(--portal-surface-raised);
   border: 1px solid var(--portal-line);
@@ -2814,21 +2879,146 @@
   width: 100%;
 }
 
-.portal-message-attachments button:hover {
+.portal-message-attachment-row > button:hover {
   border-color: #9a8a6a;
   color: var(--portal-ink);
 }
 
-.portal-message-attachments button span {
+.portal-message-attachment-row > button span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.portal-message-attachments button small {
+.portal-message-attachment-row > button small {
   color: var(--portal-muted);
   font-size: 12px;
   white-space: nowrap;
+}
+
+.portal-message-attachment-row > .portal-attachment-info {
+  display: flex;
+  justify-content: center;
+  padding: 0;
+}
+
+.portal-dialog-scrim {
+  background: rgba(25, 24, 21, 0.42);
+  border: 0;
+  inset: 0;
+  position: absolute;
+  width: 100%;
+}
+
+.portal-attachment-dialog {
+  width: min(720px, calc(100vw - 30px));
+}
+
+.portal-attachment-dialog-body {
+  padding: 18px;
+}
+
+.portal-attachment-loading {
+  color: var(--portal-muted);
+  padding: 32px;
+  text-align: center;
+}
+
+.portal-attachment-metadata {
+  display: grid;
+  gap: 1px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+}
+
+.portal-attachment-metadata > div {
+  background: #f5f3ed;
+  min-height: 68px;
+  padding: 11px 13px;
+}
+
+.portal-attachment-metadata dt {
+  color: var(--portal-muted);
+  font-size: 12px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.portal-attachment-metadata dd {
+  color: var(--portal-ink);
+  font-size: 14px;
+  margin: 7px 0 0;
+  overflow-wrap: anywhere;
+  text-transform: capitalize;
+}
+
+.portal-attachment-history,
+.portal-attachment-access {
+  border-top: 1px solid var(--portal-line);
+  margin-top: 18px;
+  padding-top: 16px;
+}
+
+.portal-attachment-history > div {
+  align-items: center;
+  display: flex;
+  gap: 7px;
+  margin-bottom: 9px;
+}
+
+.portal-attachment-history h3,
+.portal-attachment-access h3 {
+  font-size: 14px;
+  margin: 0;
+}
+
+.portal-attachment-history > button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-top: 1px solid #ebe8e1;
+  color: var(--portal-ink);
+  display: flex;
+  justify-content: space-between;
+  min-height: 58px;
+  padding: 8px 2px;
+  text-align: left;
+  width: 100%;
+}
+
+.portal-attachment-history > button:hover {
+  color: #76623e;
+}
+
+.portal-attachment-history > button span,
+.portal-attachment-history > button strong,
+.portal-attachment-history > button small {
+  display: block;
+}
+
+.portal-attachment-history > button small,
+.portal-attachment-history time,
+.portal-attachment-access time {
+  color: var(--portal-muted);
+  font-size: 12px;
+  margin-top: 3px;
+}
+
+.portal-attachment-history > button > span:last-child {
+  align-items: center;
+  display: flex;
+  gap: 9px;
+}
+
+.portal-attachment-access p {
+  align-items: center;
+  border-top: 1px solid #ebe8e1;
+  display: flex;
+  font-size: 13px;
+  justify-content: space-between;
+  margin: 8px 0 0;
+  padding-top: 8px;
+  text-transform: capitalize;
 }
 
 .portal-back-link {
@@ -3326,6 +3516,57 @@
   padding: 22px 20px;
 }
 
+.portal-conversation-list > section {
+  border: 1px solid var(--portal-line);
+  border-radius: 6px;
+  margin-bottom: 16px;
+  overflow: hidden;
+}
+
+.portal-conversation-list > section.is-replying {
+  border-color: #9a8a6a;
+}
+
+.portal-conversation-header {
+  align-items: center;
+  background: #f5f3ed;
+  border-bottom: 1px solid var(--portal-line);
+  display: flex;
+  justify-content: space-between;
+  min-height: 52px;
+  padding: 8px 12px;
+}
+
+.portal-conversation-header div,
+.portal-conversation-header strong,
+.portal-conversation-header span {
+  display: block;
+}
+
+.portal-conversation-header strong {
+  color: var(--portal-ink);
+  font-size: 14px;
+}
+
+.portal-conversation-header span {
+  color: var(--portal-muted);
+  font-size: 12px;
+  margin-top: 3px;
+}
+
+.portal-conversation-header .portal-secondary-button {
+  min-height: 30px;
+}
+
+.portal-conversation-list > section > article {
+  margin: 0;
+  padding: 15px 13px;
+}
+
+.portal-conversation-list > section > article + article {
+  border-top: 1px solid #ebe8e1;
+}
+
 .portal-update-list article {
   display: grid;
   gap: 11px;
@@ -3382,6 +3623,49 @@
   padding: 10px;
   resize: vertical;
   width: 100%;
+}
+
+.portal-compose-subject {
+  background: var(--portal-surface-raised);
+  border: 1px solid var(--portal-line-strong);
+  border-bottom: 0;
+  border-radius: 5px 5px 0 0;
+  color: var(--portal-ink);
+  font-size: 14px;
+  height: 40px;
+  outline: 0;
+  padding: 0 10px;
+  width: 100%;
+}
+
+.portal-compose-subject + textarea {
+  border-radius: 0 0 5px 5px;
+}
+
+.portal-reply-context {
+  align-items: center;
+  background: #e9e4d8;
+  border: 1px solid #d7cfbd;
+  border-bottom: 0;
+  color: #665a42;
+  display: flex;
+  font-size: 12px;
+  justify-content: space-between;
+  min-height: 38px;
+  padding: 7px 10px;
+}
+
+.portal-reply-context button {
+  background: transparent;
+  border: 0;
+  color: #765f32;
+  cursor: pointer;
+  font-size: 12px;
+  text-decoration: underline;
+}
+
+.portal-reply-context + input + textarea {
+  border-radius: 0 0 5px 5px;
 }
 
 .portal-engagement-compose footer {
@@ -5151,6 +5435,34 @@ button.portal-admin-row:hover {
   .portal-thread {
     border-top: 1px solid var(--portal-line);
     min-height: 520px;
+  }
+
+  .portal-reply-form footer,
+  .portal-engagement-compose footer,
+  .portal-reply-context {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .portal-compose-actions,
+  .portal-compose-actions .portal-primary-button,
+  .portal-compose-actions .portal-attachment-button {
+    max-width: none;
+    width: 100%;
+  }
+
+  .portal-attachment-metadata {
+    grid-template-columns: 1fr;
+  }
+
+  .portal-attachment-history > button {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .portal-conversation-header {
+    align-items: flex-start;
+    gap: 10px;
   }
 
   .portal-engagement-controlbar {

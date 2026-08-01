@@ -1,7 +1,7 @@
 # Authentication and Access Review
 
-Updated 2026-07-27 after the engagement-scoped authorization, staff MFA
-migration, and live disposable-database access-matrix verification.
+Updated 2026-08-01 after the engagement-scoped authorization, staff MFA,
+threaded correspondence, and secure attachment-history verification.
 
 ## Current model
 
@@ -15,6 +15,8 @@ migration, and live disposable-database access-matrix verification.
 - Middleware only performs the fast unauthenticated redirect. Server handlers remain authoritative.
 - Existing `clients.user_id` ownership is retained for compatibility, but `engagement_memberships` is the canonical engagement-access boundary.
 - Engagement events and documents carry an explicit audience. Clients receive only published `client` resources. Contractors receive only `contractor` resources and published `client` resources.
+- Correspondence replies inherit the parent thread audience. Clients and Contractors cannot reply across audience boundaries, and internal reply targets remain concealed from staff without `messages.internal_view`.
+- Message attachment metadata, version history, and historical downloads require both `messages.view` and engagement scope. Internal attachment details additionally require `messages.internal_view`; storage pathnames are never returned.
 - Invitations are one-time, hashed tokens stored in `auth_invitations` and expire after seven days.
 - Password recovery uses single-use, hashed tokens that expire after 30 minutes. Successful recovery revokes every existing session and pending login challenge.
 - Post-authentication navigation accepts only normalized same-origin application
