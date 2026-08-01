@@ -28,3 +28,13 @@ export function isContractorTaskStatusPatch(
     && keys[0] === "status"
     && ["open", "in_progress", "completed"].includes(String(patch.status));
 }
+
+export function canUpdateTaskFromStatus({
+  role,
+  currentStatus,
+}: {
+  role: UserRole;
+  currentStatus: string;
+}): boolean {
+  return role !== "contractor" || currentStatus !== "cancelled";
+}

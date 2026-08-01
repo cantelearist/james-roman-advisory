@@ -10,6 +10,7 @@ import { getAuthContext } from "@/lib/auth";
 import { getDb, logMatterEvent } from "@/lib/db";
 import { assertRequiredSchemaVersions } from "@/lib/schema-readiness";
 import {
+  canUpdateTaskFromStatus,
   canUpdateWorkflowRecord,
   isContractorTaskStatusPatch,
 } from "@/lib/workflow-authority";
@@ -53,6 +54,9 @@ export async function PATCH(
   }
   if (context.role === "contractor" && !isContractorTaskStatusPatch(parsed.data)) {
     return NextResponse.json({ error: "Contractors may update only the status of assigned work" }, { status: 403 });
+  }
+  if (!canUpdateTaskFromStatus({ role: context.role, currentStatus: String(current.status) })) {
+    return NextResponse.json({ error: "Cancelled tasks are controlled by staff" }, { status: 403 });
   }
   if (parsed.data.audience === "internal" && !hasCapability(access, "timeline.internal_view")) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });

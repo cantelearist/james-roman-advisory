@@ -43,6 +43,7 @@ import {
 } from "@/components/portal/portal-ui";
 import {
   canCreateWorkflowRecords,
+  canUpdateTaskFromStatus,
   canUpdateWorkflowRecord,
 } from "@/lib/workflow-authority";
 
@@ -594,15 +595,19 @@ export default function EngagementWorkspacePage() {
                           }}><option value="">Change…</option><option value="in_progress">In progress</option><option value="blocked">Blocked</option>{access.role === "super_admin" && <option value="waived">Waive</option>}</select>}
                         </div>
                       ))}
-                      {stage.tasks.map((task) => (
+                      {stage.tasks.map((task) => {
+                        const canUpdateTask = canUpdateAssignedWorkflow(task.assignee_user_id)
+                          && canUpdateTaskFromStatus({ role: access.role, currentStatus: task.status });
+                        return (
                         <div className={`portal-workflow-row portal-task-workflow portal-workflow-${task.status}`} key={task.id}>
-                          <button disabled={!canUpdateAssignedWorkflow(task.assignee_user_id) || saving === task.id} onClick={() => updateTask(task, task.status === "completed" ? "open" : "completed")}>{task.status === "completed" && <Check size={12} />}</button>
+                          <button disabled={!canUpdateTask || saving === task.id} onClick={() => updateTask(task, task.status === "completed" ? "open" : "completed")}>{task.status === "completed" && <Check size={12} />}</button>
                           <div><strong>{task.title}</strong><span>Task{task.assignee_name ? ` · ${task.assignee_name}` : " · unassigned"} · {task.audience}</span></div>
                           <PriorityBadge priority={task.priority} />
                           <time>{formatDate(task.due_date)}</time>
-                          {canUpdateAssignedWorkflow(task.assignee_user_id) && <select value={task.status} onChange={(event) => updateTask(task, event.target.value as Task["status"])}><option value="open">Open</option><option value="in_progress">In progress</option><option value="completed">Completed</option>{access.role !== "contractor" && <option value="cancelled">Cancelled</option>}</select>}
+                          {canUpdateTask ? <select value={task.status} onChange={(event) => updateTask(task, event.target.value as Task["status"])}><option value="open">Open</option><option value="in_progress">In progress</option><option value="completed">Completed</option>{access.role !== "contractor" && <option value="cancelled">Cancelled</option>}</select> : <span className={`portal-workflow-state portal-workflow-state-${task.status}`}>{task.status.replace("_", " ")}</span>}
                         </div>
-                      ))}
+                        );
+                      })}
                     </>
                   )}
                 </section>
