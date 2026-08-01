@@ -112,6 +112,30 @@ describe("Contractor task authority", () => {
     expect(sql).toHaveBeenCalledTimes(1);
   });
 
+  it("prevents contractors from reopening a cancelled task", async () => {
+    sql.mockResolvedValueOnce([{
+      id: "task-1",
+      matter_id: "matter-1",
+      title: "Cancelled site visit",
+      status: "cancelled",
+      audience: "contractor",
+      assignee_user_id: "contractor-1",
+    }]);
+
+    const response = await PATCH(
+      new Request("http://localhost/api/tasks/task-1", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "open" }),
+      }),
+      { params: Promise.resolve({ id: "task-1" }) },
+    );
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({ error: "Cancelled tasks are controlled by staff" });
+    expect(sql).toHaveBeenCalledTimes(1);
+  });
+
   it("hides tasks assigned to another user", async () => {
     sql.mockResolvedValueOnce([{
       id: "task-1",

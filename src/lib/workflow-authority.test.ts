@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  canUpdateTaskFromStatus,
   canCreateWorkflowRecords,
   canUpdateWorkflowRecord,
   isContractorTaskStatusPatch,
@@ -37,5 +38,11 @@ describe("workflow authority", () => {
     expect(isContractorTaskStatusPatch({ status: "completed" })).toBe(true);
     expect(isContractorTaskStatusPatch({ status: "cancelled" })).toBe(false);
     expect(isContractorTaskStatusPatch({ status: "completed", priority: "urgent" })).toBe(false);
+  });
+
+  it("keeps cancelled tasks under staff control", () => {
+    expect(canUpdateTaskFromStatus({ role: "contractor", currentStatus: "cancelled" })).toBe(false);
+    expect(canUpdateTaskFromStatus({ role: "contractor", currentStatus: "open" })).toBe(true);
+    expect(canUpdateTaskFromStatus({ role: "admin", currentStatus: "cancelled" })).toBe(true);
   });
 });
