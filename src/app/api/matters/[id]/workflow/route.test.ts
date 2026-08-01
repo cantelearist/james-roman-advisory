@@ -69,6 +69,50 @@ describe("Contractor workflow authority", () => {
     expect(sql).not.toHaveBeenCalled();
   });
 
+  it("returns the assignee name with a newly created requirement", async () => {
+    authMocks.getAuthContext.mockResolvedValue({
+      userId: "super-admin-1",
+      role: "super_admin",
+      user: { id: "super-admin-1", name: "Super Admin", email: "admin@example.com", role: "super_admin" },
+    });
+    accessMocks.getPortalAccessSummary.mockResolvedValue({
+      role: "super_admin",
+      capabilities: ["timeline.manage"],
+      scope: "global",
+      permissionProfile: null,
+    });
+    sql
+      .mockResolvedValueOnce([{ id: "matter-1" }])
+      .mockResolvedValueOnce([{ id: "contractor-1", name: "Contractor" }])
+      .mockResolvedValueOnce([{
+        id: itemId,
+        matter_id: "matter-1",
+        title: "Inspect conditions",
+        assignee_user_id: "contractor-1",
+      }]);
+
+    const response = await POST(
+      new Request("http://localhost/api/matters/matter-1/workflow", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          stageKey: "assessment",
+          title: "Inspect conditions",
+          assigneeUserId: "contractor-1",
+        }),
+      }),
+      { params: Promise.resolve({ id: "matter-1" }) },
+    );
+
+    expect(response.status).toBe(201);
+    expect(await response.json()).toEqual({
+      item: expect.objectContaining({
+        assignee_user_id: "contractor-1",
+        assignee_name: "Contractor",
+      }),
+    });
+  });
+
   it("hides an unassigned workflow item from contractor updates", async () => {
     sql.mockResolvedValueOnce([{ id: itemId, matter_id: "matter-1", assignee_user_id: null }]);
 

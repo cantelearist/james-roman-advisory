@@ -102,9 +102,10 @@ export async function POST(request: Request) {
   const sql = getDb();
   const matter = await sql`SELECT id, title FROM matters WHERE id = ${parsed.data.matterId} LIMIT 1`;
   if (matter.length === 0) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  let assigneeName: string | null = null;
   if (parsed.data.assigneeUserId) {
     const assignee = await sql`
-      SELECT u.id
+      SELECT u.id, u.name
       FROM users u
       LEFT JOIN engagement_memberships em
         ON em.user_id = u.id
@@ -123,6 +124,7 @@ export async function POST(request: Request) {
     if (assignee.length === 0) {
       return NextResponse.json({ error: "Assignee does not have access to this engagement" }, { status: 400 });
     }
+    assigneeName = String(assignee[0].name);
   }
 
   const id = crypto.randomUUID();
@@ -158,5 +160,7 @@ export async function POST(request: Request) {
       path: `/portal/matters/${parsed.data.matterId}?section=work`,
     });
   }
-  return NextResponse.json({ task: rows[0] }, { status: 201 });
+  return NextResponse.json({
+    task: { ...rows[0], assignee_name: assigneeName },
+  }, { status: 201 });
 }

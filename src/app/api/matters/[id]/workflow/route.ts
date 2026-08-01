@@ -92,9 +92,10 @@ export async function POST(
   const sql = getDb();
   const matter = await sql`SELECT id FROM matters WHERE id = ${id} LIMIT 1`;
   if (matter.length === 0) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  let assigneeName: string | null = null;
   if (parsed.data.assigneeUserId) {
     const assignees = await sql`
-      SELECT u.id
+      SELECT u.id, u.name
       FROM users u
       LEFT JOIN engagement_memberships membership
         ON membership.user_id = u.id
@@ -114,6 +115,7 @@ export async function POST(
     if (assignees.length === 0) {
       return NextResponse.json({ error: "Assignee does not have access to this engagement" }, { status: 400 });
     }
+    assigneeName = String(assignees[0].name);
   }
   const rows = await sql`
     INSERT INTO engagement_workflow_items (
@@ -128,7 +130,9 @@ export async function POST(
     )
     RETURNING *
   `;
-  return NextResponse.json({ item: rows[0] }, { status: 201 });
+  return NextResponse.json({
+    item: { ...rows[0], assignee_name: assigneeName },
+  }, { status: 201 });
 }
 
 export async function PATCH(
