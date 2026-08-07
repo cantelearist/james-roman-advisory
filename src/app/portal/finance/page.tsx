@@ -68,6 +68,7 @@ export default function FinancePage() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [changeOrders, setChangeOrders] = useState<ChangeOrder[]>([]);
   const [loading, setLoading] = useState(true);
+  const [hasLoaded, setHasLoaded] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [query, setQuery] = useState("");
@@ -99,6 +100,7 @@ export default function FinancePage() {
       setContracts(contractData.contracts ?? []);
       setInvoices(invoiceData.invoices ?? []);
       setChangeOrders(changeOrderData.changeOrders ?? []);
+      setHasLoaded(true);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Finance records could not be loaded.");
     } finally {
@@ -240,33 +242,43 @@ export default function FinancePage() {
         }
       />
 
-      <section className="portal-finance-summary">
-        <div><CircleDollarSign size={18} /><span><strong>{money(outstanding)}</strong>Outstanding</span></div>
-        <div className={overdue.length ? "is-critical" : undefined}><AlertTriangle size={18} /><span><strong>{overdue.length}</strong>Overdue invoices</span></div>
-        <div><ShieldCheck size={18} /><span><strong>{money(paid)}</strong>Collected</span></div>
-        <div><ReceiptText size={18} /><span><strong>{invoices.filter((invoice) => invoice.status === "draft").length}</strong>Draft invoices</span></div>
-      </section>
+      {!hasLoaded ? (
+        <section className="portal-card portal-finance-table-wrap" aria-busy={loading} aria-label={loading ? "Loading financial records" : "Financial records unavailable"}>
+          {loading ? (
+            <div className="portal-board-loading">{Array.from({ length: 8 }, (_, index) => <span key={index} />)}</div>
+          ) : (
+            <EmptyState icon={CircleDollarSign} title="Financial records unavailable" description={error || "Refresh to try again."} />
+          )}
+        </section>
+      ) : (
+        <>
+          <section className="portal-finance-summary">
+            <div><CircleDollarSign size={18} /><span><strong>{money(outstanding)}</strong>Outstanding</span></div>
+            <div className={overdue.length ? "is-critical" : undefined}><AlertTriangle size={18} /><span><strong>{overdue.length}</strong>Overdue invoices</span></div>
+            <div><ShieldCheck size={18} /><span><strong>{money(paid)}</strong>Collected</span></div>
+            <div><ReceiptText size={18} /><span><strong>{invoices.filter((invoice) => invoice.status === "draft").length}</strong>Draft invoices</span></div>
+          </section>
 
-      <div className="portal-finance-tabs">
-        {(["all", "invoice", "contract", "change_order"] as const).map((value) => <button key={value} className={type === value ? "is-active" : undefined} onClick={() => setType(value)}>{value === "all" ? "All records" : value.replace("_", " ")}<span>{value === "all" ? records.length : value === "invoice" ? invoices.length : value === "contract" ? contracts.length : changeOrders.length}</span></button>)}
-      </div>
+          <div className="portal-finance-tabs">
+            {(["all", "invoice", "contract", "change_order"] as const).map((value) => <button key={value} className={type === value ? "is-active" : undefined} onClick={() => setType(value)}>{value === "all" ? "All records" : value.replace("_", " ")}<span>{value === "all" ? records.length : value === "invoice" ? invoices.length : value === "contract" ? contracts.length : changeOrders.length}</span></button>)}
+          </div>
 
-      <div className="portal-board-toolbar">
-        <label className="portal-board-search"><Search size={15} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search number, engagement or title" /></label>
-        <select className="portal-toolbar-select" value={matterId} onChange={(event) => setMatterId(event.target.value)}><option value="">All engagements</option>{matters.map((matter) => <option key={matter.id} value={matter.id}>{matter.title}</option>)}</select>
-        <select className="portal-toolbar-select" value={status} onChange={(event) => setStatus(event.target.value)}><option value="">All statuses</option>{["draft", "issued", "processing", "paid", "overdue", "accepted", "rejected", "void"].map((item) => <option key={item}>{item}</option>)}</select>
-      </div>
+          <div className="portal-board-toolbar">
+            <label className="portal-board-search"><Search size={15} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search number, engagement or title" /></label>
+            <select className="portal-toolbar-select" value={matterId} onChange={(event) => setMatterId(event.target.value)}><option value="">All engagements</option>{matters.map((matter) => <option key={matter.id} value={matter.id}>{matter.title}</option>)}</select>
+            <select className="portal-toolbar-select" value={status} onChange={(event) => setStatus(event.target.value)}><option value="">All statuses</option>{["draft", "issued", "processing", "paid", "overdue", "accepted", "rejected", "void"].map((item) => <option key={item}>{item}</option>)}</select>
+          </div>
 
-      {error && <div className="portal-inline-error" role="alert"><span>{error}</span><button onClick={() => setError("")}><X size={14} /></button></div>}
-      {success && <div className="portal-inline-success" role="status"><span>{success}</span><button onClick={() => setSuccess("")}><X size={14} /></button></div>}
+          {error && <div className="portal-inline-error" role="alert"><span>{error}</span><button onClick={() => setError("")}><X size={14} /></button></div>}
+          {success && <div className="portal-inline-success" role="status"><span>{success}</span><button onClick={() => setSuccess("")}><X size={14} /></button></div>}
 
-      <section className="portal-card portal-finance-table-wrap">
-        {loading ? (
-          <div className="portal-board-loading">{Array.from({ length: 8 }, (_, index) => <span key={index} />)}</div>
-        ) : records.length === 0 ? (
-          <EmptyState icon={CircleDollarSign} title="No financial records match this view" description="Draft and issued contracts, invoices and change orders will appear here." />
-        ) : (
-          <div className="portal-finance-table">
+          <section className="portal-card portal-finance-table-wrap">
+            {loading ? (
+              <div className="portal-board-loading">{Array.from({ length: 8 }, (_, index) => <span key={index} />)}</div>
+            ) : records.length === 0 ? (
+              <EmptyState icon={CircleDollarSign} title="No financial records match this view" description="Draft and issued contracts, invoices and change orders will appear here." />
+            ) : (
+              <div className="portal-finance-table">
             <div className="portal-finance-row portal-finance-header"><span>Record</span><span>Engagement</span><span>Status</span><span>Amount</span><span>Timing</span><span>Actions</span></div>
             {records.map((record) => (
               <div className="portal-finance-row" key={`${record.recordType}-${record.id}`}>
@@ -295,6 +307,8 @@ export default function FinancePage() {
           </div>
         )}
       </section>
+        </>
+      )}
 
       {showCreate && (
         <div className="portal-dialog-overlay" role="dialog" aria-modal="true" aria-labelledby="create-finance-title">
