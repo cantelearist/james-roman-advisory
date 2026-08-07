@@ -5,7 +5,7 @@ import { SESSION_COOKIE } from "@/lib/auth";
 import { hasTrustedMutationOrigin } from "@/lib/site-url";
 
 const STAGING_HOSTNAMES = ["staging.jamesroman.la"];
-const PUBLIC_EXACT = new Set(["/", "/robots.txt", "/sitemap.xml"]);
+const PUBLIC_EXACT = new Set(["/", "/privacy", "/cookies", "/terms", "/nda", "/accessibility", "/robots.txt", "/sitemap.xml"]);
 const PUBLIC_PREFIXES = ["/prototype", "/prototype2", "/sign-in", "/sign-up", "/forgot-password", "/reset-password", "/mfa", "/api/auth", "/api/consultations", "/api/cron", "/api/seed", "/api/stripe/webhook"];
 const ORIGIN_EXEMPT_PREFIXES = ["/api/cron", "/api/seed", "/api/stripe/webhook"];
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);

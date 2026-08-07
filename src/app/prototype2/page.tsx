@@ -787,7 +787,7 @@ export default function Prototype() {
                 accepted and your Private Office is opened.
               </p>
               <div className="flex flex-wrap gap-2.5">
-                {["CCPA/CPRA compliant","No portal trackers"].map((l) => (
+                {["Private by design","No portal trackers"].map((l) => (
                   <span key={l} className="text-[0.72rem] uppercase tracking-widest border px-2.5 py-1"
                     style={{ borderColor:"rgba(178,168,152,0.14)", color:TITAN, opacity:0.55 }}>{l}</span>
                 ))}
@@ -810,7 +810,7 @@ export default function Prototype() {
             </div>
             <div className="flex gap-8 text-[0.82rem] uppercase tracking-[0.18em]"
               style={{ color:TITAN, opacity:0.34 }}>
-              {[["The Practice","#the-practice"],["Consultation","#consultation"],["Client portal","/portal"]].map(([l,h]) => (
+              {[["The Practice","#the-practice"],["Consultation","#consultation"],["Client portal","/portal"],["Privacy","/privacy"],["Terms","/terms"],["Accessibility","/accessibility"]].map(([l,h]) => (
                 <Link key={l} href={h} className="hover:opacity-70 transition-opacity duration-300">{l}</Link>
               ))}
             </div>
