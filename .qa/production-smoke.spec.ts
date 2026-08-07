@@ -11,6 +11,7 @@ const safeProductionPaths = [
   /^\/forgot-password$/,
   /^\/reset-password$/,
   /^\/mfa$/,
+  /^\/(?:privacy|cookies|terms|nda|accessibility)$/,
   /^\/_next\//,
   /\.(?:css|js|jpe?g|webp|png|gif|svg|ico|woff2?)$/,
 ];
@@ -82,6 +83,9 @@ test("footer links match the current site map", async ({ page }) => {
   await expect(footer.getByRole("link", { name: "The Practice" })).toHaveAttribute("href", "#the-practice");
   await expect(footer.getByRole("link", { name: "Consultation" })).toHaveAttribute("href", "#consultation");
   await expect(footer.getByRole("link", { name: "Client portal" })).toHaveAttribute("href", "/portal");
+  await expect(footer.getByRole("link", { name: "Privacy" })).toHaveAttribute("href", "/privacy");
+  await expect(footer.getByRole("link", { name: "Terms" })).toHaveAttribute("href", "/terms");
+  await expect(footer.getByRole("link", { name: "Accessibility" })).toHaveAttribute("href", "/accessibility");
 });
 
 test("portal route requires authentication", async ({ page }) => {
