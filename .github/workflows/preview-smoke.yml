@@ -22,6 +22,10 @@ jobs:
       github.event_name == 'workflow_dispatch' ||
       github.event.client_payload.environment != 'production'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    container:
+      image: mcr.microsoft.com/playwright:v1.60.0-noble
+      options: --user 1001
     steps:
       - uses: actions/checkout@v4
         with:
@@ -33,9 +37,6 @@ jobs:
           cache: npm
 
       - run: npm ci
-
-      - name: Install Playwright browser
-        run: npx playwright install chromium --with-deps
 
       - name: Run read-only smoke tests against preview
         run: npx playwright test .qa/production-smoke.spec.ts --project=chromium
