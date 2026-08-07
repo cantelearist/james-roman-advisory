@@ -28,7 +28,7 @@ describe("Home page", () => {
     render(<Home />);
 
     expect(screen.getByText(/Broad Beach Rd/i)).toBeInTheDocument();
-    expect(screen.getByText("Privacy")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Privacy" })).toBeInTheDocument();
     expect(screen.getByText("Transparency")).toBeInTheDocument();
     expect(screen.getByText("Access")).toBeInTheDocument();
     expect(screen.getByText("No portal trackers")).toBeInTheDocument();
