@@ -1,220 +1,165 @@
-# James Roman Advisory — Implementation Plan
+# James Roman Advisory — Reconciled Implementation Plan
 
-_Last updated: 2026-05-11_
+_Last reconciled: 2026-08-07_
+_Evidence baseline: `GRAPH_REPORT.md` (2026-08-01), source review of `main` at `3c6501b`, and the current security documentation. This is a delivery plan, not a claim that unverified production controls are live._
 
-## 1. Positioning & Voice
+## Executive position
 
-**What the firm is.** A confidential advisory practice that represents the **owner** (not the contractor) on luxury residential projects in Malibu, Pacific Palisades, Brentwood, Santa Monica, Bel Air, and Beverly Hills. Mandate: oversee and endorse hazardous-materials remediation protocols and structural inspections.
+The Private Office is no longer an MVP on paper. It is a working, role-aware operating portal with engagement workflow, correspondence, secure documents, finance, notifications, administrative controls, and first-party authentication.
 
-**Tonal reference points.** White-shoe law firm + concierge medicine + private banking. Quiet authority. No marketing-speak. No stock photos of hard hats. Restrained typography, generous whitespace, off-white/stone palette with a single accent. Mobile-first but desktop-correct.
+The center of gravity has changed. The next work is not another portal redesign. It is to close the gaps that decide whether a confidential client system is ready for broader use: client self-service, public/legal surfaces, operational verification, durable security controls, and observability.
 
-**Trust signals (not testimonials).** Credentials, jurisdictional coverage map, sample (redacted) engagement letter, principles document, press mentions if any. **No client names, no addresses, no project photos** unless explicitly cleared in writing.
+The original plan assumed a future Next 15/Drizzle/monorepo build. The delivered system is a single Next.js 16 application with hand-written Neon SQL and idempotent schema helpers. This plan follows the system that actually exists.
 
----
+## Scope and release truth
 
-## 2. Sitemap
+| Reference | State | Meaning |
+|---|---|---|
+| Production source | `main` at `3c6501b` | Includes the merged finance loading-state correction from PR #28. |
+| Open local checkout | `agent/message-attachments` at `8ddc9bc` | An older ancestor of `main`; it must not be treated as the production source. The message-attachment work it contains has already been merged, along with later fixes. |
+| Local unrelated changes | Present in the open checkout | `skills-lock.json`, `src/app/prototype2/page.tsx`, local skills, and `graphify-out/` remain outside this plan and release train. |
+| Runtime claims | Require fresh verification | Source, CI, and a Vercel-ready deployment do not prove a credential cutover, scheduled job, email receipt, backup restore, or production role policy. |
 
-### Public site (marketing)
-- `/` — Home: one-line value prop, three pillars, "Request a consultation" CTA
-- `/practice` — What we do (remediation oversight, structural inspection endorsement, owner's representation)
-- `/principles` — Core principles (independence, confidentiality, owner-only representation, written record)
-- `/engagements` — Past engagements (anonymized case studies — square footage, scope, jurisdiction, outcome, no addresses)
-- `/people` — James Roman + senior advisors (bio, credentials, jurisdictions)
-- `/jurisdictions` — Coverage areas with notes on local code/permit nuances
-- `/insights` — Long-form writing (optional, phase 2)
-- `/consultation` — Scheduling intake form → calendar
-- `/contact` — Encrypted contact, mailing address, no public phone
-- `/legal/privacy`, `/legal/terms`, `/legal/accessibility`
+## Reconciliation matrix
 
-### Client portal (gated, `/portal/*`)
-- `/portal` — Dashboard: active engagements, recent activity, unread items
-- `/portal/engagements/[id]` — Single engagement: timeline, scope, principals, status
-- `/portal/engagements/[id]/documents` — Reports, endorsements, inspection records (signed-URL viewer)
-- `/portal/engagements/[id]/invoices` — Invoice list, statements, payment status
-- `/portal/engagements/[id]/messages` — Threaded comments to/from advisor
-- `/portal/engagements/[id]/requests` — Submit a request (site visit, document, second opinion)
-- `/portal/account` — Profile, MFA, notification preferences, signed-device list
-- `/portal/audit` — Personal access log (visible to client, full audit trail server-side)
-
----
-
-## 3. Architecture
-
-### Stack
-- **Framework:** Next.js 15 (App Router) + TypeScript, React Server Components
-- **Styling:** Tailwind CSS + shadcn/ui (matches Magic MCP output)
-- **Forms/validation:** React Hook Form + Zod
-- **Auth:** First-party email/password sessions with a planned second-factor upgrade
-- **DB:** Postgres on Neon (branchable) or Supabase (built-in RLS + storage)
-- **ORM:** Drizzle (preferred for strict types and migrations)
-- **Storage:** S3-compatible (Supabase Storage or Cloudflare R2) with server-side encryption, signed URLs only, no public buckets
-- **Email (transactional):** Resend or AWS SES with DKIM/DMARC enforced
-- **Scheduling:** Cal.com self-hosted or embedded with private event types (no public booking pages)
-- **AI:** Anthropic Claude API (Sonnet 4.6 for chat/summaries; Haiku 4.5 for cheap classifiers); all prompts cached; PII redaction at boundary
-- **Hosting:** Vercel (Pro, with WAF rules, log scrubbing) — fallback AWS if data residency tightens
-- **Observability:** Sentry (with PII scrubbing on), Vercel Analytics (no third-party trackers on portal routes)
-
-### Repo layout
-```
-JR Design/
-├── apps/web/                 # Next.js app
-│   ├── app/
-│   │   ├── (marketing)/      # public routes
-│   │   ├── (portal)/portal/  # gated routes, layout enforces auth + MFA
-│   │   └── api/              # route handlers
-│   ├── components/ui/        # shadcn primitives
-│   ├── components/marketing/ # public-site sections
-│   ├── components/portal/    # portal sections
-│   ├── lib/                  # db, auth, ai, audit, redact
-│   └── styles/
-├── packages/db/              # drizzle schema + migrations
-├── packages/ai/              # claude clients, prompts, redaction
-├── packages/config/          # eslint, tsconfig, tailwind preset
-└── PLAN.md (this file)
-```
-
-### Data model (initial)
-- `users` — first-party identity, password hash, status, and role family (`super_admin`, `admin`, `contractor`, `client`)
-- `permission_profiles` — reusable Super Admin-defined capabilities for Admin and Contractor users
-- `user_permission_assignments` — Permission Profile plus global or assigned engagement scope
-- `clients` — household/entity record, billing entity, primary contact
-- `engagements` — belongs to client, status, scope, jurisdiction, principals (advisor IDs)
-- `engagement_memberships` — canonical, revocable, optionally expiring access to one Engagement
-- `documents` — engagement-scoped, storage key, classification, audience, publication status, retention class
-- `invoices` — engagement-scoped, line items, status, Stripe invoice ID
-- `messages` — threaded per engagement, author, body, attachments, read receipts
-- `requests` — client-initiated, type, status, SLA target, assignee
-- `consultations` — pre-client intake, status (`new`, `screening`, `scheduled`, `declined`, `converted`)
-- `audit_log` — append-only, every read/write of sensitive data (user_id, action, resource, ip_hash, ua_hash, timestamp)
-- `consents` — record of accepted policies/versions per user
-
-Current application policy: every protected route enforces a named capability and active Engagement Membership. Database RLS remains required before any secondary application or reporting tool receives direct database access.
-
----
-
-## 4. AI Integration (where, how, with guardrails)
-
-AI is integrated **from intake forward**, but never speaks on the firm's behalf without an advisor in the loop.
-
-| Surface | Model | Purpose | Guardrails |
+| Original intent | Current state | Evidence | Plan action |
 |---|---|---|---|
-| Intake screener (`/consultation`) | Sonnet | Classify inquiry, draft internal summary for advisor review, suggest jurisdiction/scope tags | No client-facing reply; advisor approves before any outbound email |
-| Document summarizer (portal) | Sonnet | Generate plain-English summary of inspection reports and endorsements for clients | Summary is labeled "AI-generated, advisor-reviewed"; advisor must sign off before publishing |
-| Search/Q&A over engagement (portal) | Sonnet + RAG | Client asks "what's the status of the asbestos report?"; AI answers from that engagement's docs only | Retrieval scoped by RLS; no cross-engagement leakage; refuses if confidence low |
-| Request triage | Haiku | Classify incoming requests by urgency/type, route to advisor | Deterministic fallback if model declines |
-| Drafting assistant (advisor side only) | Sonnet | Help advisors draft endorsements, correspondence | Never auto-sent; redline workflow |
+| Next.js App Router, TypeScript, Tailwind | **EXISTS — changed implementation** | `package.json`, `src/app/*` | Keep the single application. Do not introduce the proposed monorepo unless a second independently deployed product justifies it. |
+| Drizzle migrations | **NOT ADOPTED** | `@neondatabase/serverless`; schema helpers in `src/lib/db.ts` | Continue with reviewed SQL migrations and the protected migration workflow. Do not add an ORM merely to match the old plan. |
+| First-party email/password sessions | **EXISTS** | `src/lib/auth.ts`, `src/lib/password.ts`, `/api/auth/*` | Maintain; keep hosted authentication providers out of scope. |
+| MFA for portal users | **PARTIAL** | `src/lib/mfa.ts`, `/mfa`, `AUTH_ACCESS_REVIEW.md` | Staff TOTP plus recovery codes exist. Enroll every staff identity and decide whether client MFA and passkeys are required before broad client onboarding. |
+| Four-role access model | **EXISTS** | `src/lib/access-control.ts`, `engagement_memberships`, `/portal/admin` | Continue capability and engagement-scope enforcement. Test every role against the live deployment before each material release. |
+| Engagement dashboard and detail workspace | **EXISTS** | `/portal`, `/portal/matters`, `/portal/matters/[id]` | Treat Engagements as the canonical operating record. Continue refinement only where a real operating gap appears. |
+| Persisted workflow and tasks | **EXISTS** | `engagement_workflow_items`, `engagement_tasks`, `/api/tasks`, `/api/matters/[id]/workflow` | Finish policy and transition-gate acceptance tests, including staff overrides and evidence requirements. |
+| Monday-grade board mechanics | **EXISTS, with bounded scope** | table, Kanban, calendar, workload, filters, saved views in `/portal/matters` and `/api/portal/views` | Improve only from observed staff use. Do not build a general-purpose automation or BI platform. |
+| Unified correspondence and notifications | **EXISTS** | `/portal/inbox`, `engagement_messages`, notifications, email delivery records | Exercise live receipt, unread/read, audience, attachment, and error paths for each role. |
+| Secure document vault | **EXISTS** | Vercel Blob proxies, versions, download audit, `/portal/vault` | Complete real document lifecycle tests: publish, replace, download, delete, access history, and client isolation. |
+| Contracts, invoices, change orders, Stripe payment | **EXISTS** | contracts/invoices/change-orders routes, Stripe Checkout/webhook, RCA PDF routes | Complete finance operational acceptance: draft, issue, reminder, payment, failure, void, change order, and audit history. |
+| Super Admin administration | **EXISTS** | users, profiles, invitations, audit, automations, settings in `/portal/admin` | Keep high-impact confirmation and audit behavior. Add a documented lost-factor procedure. |
+| Public marketing information architecture | **PARTIAL** | The public site is primarily a single-page narrative; header links are section anchors. There are no dedicated Practice, Principles, People, Jurisdictions, Engagements, Insights, legal, or accessibility routes. | Build the minimum credible public and legal surface before promoting the portal broadly. |
+| Consultation intake | **EXISTS** | `ConsultationForm`, `/api/consultations`, Resend notification | Keep a clear submission receipt and verify provider acceptance and mailbox receipt separately. |
+| Client requests, account, personal audit log | **MISSING** | No `/api/requests`, `/portal/account`, or client audit route exists. | Build as the next client-facing product phase; do not describe them as live. |
+| AI intake, summarization, RAG, drafting | **MISSING by design** | No Anthropic/OpenAI application integration is present. | Defer until a written data-processing, redaction, review, retention, and disclosure decision is approved. |
+| RLS for secondary database access | **PARTIAL — readiness only** | `docs/security/RLS_READINESS_PLAN.md` | Keep application authorization authoritative. Do not grant direct database access to secondary tools until the readiness plan is completed and verified. |
+| Production runtime database role | **NOT VERIFIED LIVE** | Guarded migration/runtime-role workflow and docs exist; source alone is insufficient proof. | Re-run the cutover evidence gate before relying on this as a live control. |
+| Sentry, axe-core, backup drill, external security review | **MISSING / NOT VERIFIED** | No Sentry or axe dependency/CI job; no restore-drill evidence in repository. | Make these operational-release work, not aspirational architecture notes. |
 
-**Hard rules:**
-- No third-party AI vendors in the data path. Anthropic only.
-- Prompt caching enabled for system prompts and engagement context (5-minute TTL is fine; we re-pull on each session).
-- PII redaction layer (`packages/ai/redact.ts`) strips SSNs, full addresses, phone numbers before any model call where they're not needed.
-- All AI requests logged to `audit_log` with prompt hash + response hash.
-- "Reset / forget" surface: client can request deletion of their AI interaction history (separate from engagement docs).
+## Architecture that is actually in use
 
----
+- **Application:** Next.js 16 App Router, React 19, TypeScript, Tailwind, Base UI/shadcn-style primitives.
+- **Database:** Neon PostgreSQL through `@neondatabase/serverless`; schema initialization and data operations use reviewed SQL in `src/lib/db.ts`.
+- **Authentication:** first-party, opaque hashed sessions; scrypt passwords; staff TOTP with encrypted factor secrets and one-use recovery codes.
+- **Authorization:** fixed Super Admin authority; Super Admin-defined Admin/Contractor profiles; global or engagement-assigned scope; resource audiences; server-side capability checks.
+- **Storage:** private Vercel Blob. Clients receive authenticated proxy streams, never a raw Blob URL or storage path.
+- **Email:** Resend, with portal notification and delivery-record support.
+- **Billing:** Stripe-hosted Checkout; signed, idempotent webhook processing is the payment authority.
+- **Documents:** RCA-styled PDF endpoints for invoices, change orders, and generated documents.
+- **Release controls:** GitHub Actions unit/backend tests, production dependency audit, preview smoke, guarded production migration/runtime-role workflows, and Vercel deployment.
 
-## 5. Compliance & Privacy Posture
+## Current product baseline
 
-### Regulatory
-- **CCPA / CPRA** (California consumer privacy): Notice at collection, Do Not Sell/Share link (we don't sell, but the link is required), 12-month data inventory, deletion + access rights workflow in `/portal/account`.
-- **ADA / WCAG 2.2 AA**: Color contrast ≥ 4.5:1 (we'll exceed), keyboard nav, focus rings visible, semantic landmarks, alt text, captioned video, axe-core in CI.
-- **SOC 2 readiness** (not certified day one, but built so we can): Access controls, change management, audit logging, encryption, vendor list, incident-response runbook.
-- **California Civil Code §1798.81.5** (reasonable security for personal info): Encryption at rest + in transit, least-privilege access, MFA on admin.
-- **Records retention**: 7 years default for engagement records (consult counsel before launch — placeholder, see §10).
+### Private Office — shipped capability
 
-### Technical controls
-- **Encryption:** TLS 1.3 only; AES-256 at rest; per-document envelope encryption for sensitive classes (endorsements, inspection reports).
-- **Auth:** MFA required for all portal users (TOTP + passkey preferred). Session timeout 30 min idle / 12 hr absolute. Device list visible to user.
-- **Access control:** fixed Super Admin authority, Super Admin-defined Admin/Contractor Permission Profiles, engagement-scoped memberships, and explicit resource audiences. Add Postgres RLS before direct database access is expanded.
-- **Logging:** Append-only audit log; logs scrubbed of secrets; 1-year retention hot, longer cold storage.
-- **Backups:** Daily snapshot, 30-day retention, restore drill quarterly.
-- **No third-party trackers on `/portal/*`.** Marketing routes get a single privacy-respecting analytics tool (Vercel Analytics or Plausible) with cookie banner where required.
-- **Secrets:** Vercel env + 1Password / Doppler; no secrets in repo; rotation calendar.
-- **Vendor list (DPA on file before launch):** Vercel, Neon/Supabase, Resend, Anthropic, Sentry, Stripe.
+- Role-aware shell with global search, quick create, notification center, responsive navigation, and permission-aware modules.
+- Command-center dashboard, My Work, engagement board, saved views, filtering, sorting, grouping, pagination, and table/Kanban/calendar/workload views.
+- Engagement workspace with persisted workflow items, tasks, stage state, activity, updates, files, finance, and client/property context.
+- Threaded engagement messages with explicit audiences, unread state, email/portal notification delivery records, and secure attachments.
+- Document vault with metadata, controlled downloads, version upload/history, file-access events, publication/audience controls, and empty/error states.
+- Finance records with draft/issue/remind/void controls, contracts, invoices, change orders, payment activity, Stripe Checkout, signed webhooks, and PDF output.
+- Super Admin control plane for people, permission profiles, invitations, engagement memberships, audit log, portal settings, and limited audited automation recipes.
 
-### Confidentiality (firm-specific)
-- Engagement records keyed by internal ID, never by address.
-- Public engagement page is **anonymized** — no addresses, no client names, no images that could identify a property.
-- Staff access logged and reviewable by the client on their own audit page.
+### Deliberately not counted as shipped
 
----
+- Passkeys, client MFA enforcement, personal account/device management, and personal audit-log access.
+- Client request intake and SLA workflow.
+- Dedicated public practice pages, legal pages, accessibility statement, anonymized case studies, or public insights.
+- AI assistance, RAG, automated client-facing summaries, or autonomous outbound communication.
+- Sentry/central error monitoring, an automated WCAG gate, independently verified backups, or a completed RLS rollout.
 
-## 6. UX Principles (for the design pass)
+## Delivery sequence
 
-1. **Quiet, not loud.** Editorial typography (one serif display, one humanist sans). No gradients on marketing pages. One restrained accent color.
-2. **Mobile-first, thumb-zone primary actions.** Bottom-aligned CTAs on portal mobile views.
-3. **Reading > scanning.** Long-form authority pages, not bullet-soup. Generous measure (~65ch).
-4. **Document-grade portal.** Portal looks like Stripe Dashboard meets a private bank — dense where helpful, never cluttered.
-5. **Discretion in copy.** No "trust us!" Show the work: principles, jurisdictions, sample documents.
-6. **Accessibility as a feature, not a checkbox.** Visible focus states, real semantic structure, reduced-motion respected, prefers-color-scheme honored.
+### Release 0 — Evidence and documentation hygiene
 
----
+**Goal:** make the existing system’s operational claims defensible.
 
-## 7. Build Phases
+1. Reconcile stale documentation. `docs/SECURITY-POSTURE.md` still describes a static preview and planned auth even though the application has live portal capabilities. Rewrite it from verified controls and clearly labeled unverified controls.
+2. Confirm the exact Vercel project, `main` commit, apex and `www` aliases for every production release. Record the deployment URL and SHA in the release handoff.
+3. Prove the production runtime database role rather than relying on workflow/doc evidence: correct Vercel `DATABASE_URL`, redeploy, denied schema/role operations, successful application requests, and temporary-secret removal.
+4. Run freshly authenticated, read-only role smoke tests for Super Admin, global Admin, assigned Admin, Contractor, and Client. Include forbidden direct-route access checks.
+5. Perform a mailbox-receipt test for consultation, invitation, message, and document notification flows. Provider acceptance is not mailbox receipt.
+6. Verify the authenticated cron schedule for portal automations and inspect a successful and a failed run record.
 
-### Phase 0 — Foundation (this session, ~1 day)
-- Initialize Next.js + TS + Tailwind + shadcn in `/Users/romancantelearist/JR Design`
-- Wire Drizzle + Neon/Supabase, schema migration #1
-- Wire first-party sessions, password hashing, and route protection for `/portal/*`
-- ESLint, Prettier, Husky, axe-core CI, basic Sentry
-- Deploy preview on Vercel
+**Exit gate:** each claim above has dated production evidence; gaps are marked as gaps, not inferred from code or CI.
 
-### Phase 1 — Marketing site (~2–3 days)
-- Home, Practice, Principles, People, Jurisdictions, Engagements (anonymized cards), Contact, Legal pages
-- Consultation intake form → DB + advisor email + AI intake summary (internal)
-- Cookie banner, privacy notice, accessibility statement
-- Lighthouse ≥ 95 across the board, axe-clean
+### Release 1 — Client self-service and external trust surface
 
-### Phase 2 — Client portal MVP (~1 week)
-- Auth + MFA enforcement
-- Engagement list, single-engagement view
-- Documents (upload-by-advisor only at first; signed-URL viewer)
-- Messages (threaded)
-- Invoices (read-only; Stripe-hosted payment)
-- Requests
-- Account page + personal audit log
+**Goal:** close the largest difference between the current private operating system and the client experience promised in the original plan.
 
-### Phase 3 — AI surfaces (~1 week)
-- Intake screener (advisor-facing summary)
-- Document summarizer (advisor-approved publishing)
-- Engagement Q&A (RAG over that engagement's documents only)
-- Request triage (advisor side)
+1. Build `/portal/account`: profile, notification preferences, session/device list, password change, MFA status/enrollment, recovery-code handling, and a restrained session-revocation flow.
+2. Build client Requests as a persisted, assigned, auditable engagement object with type, status, owner, SLA target, evidence, and client-visible updates. Do not overload messages to simulate requests.
+3. Build `/portal/audit` as a client-safe personal activity/access view. Keep the complete security audit server-side and restrict its fields appropriately.
+4. Build only the public routes needed for credibility and compliance: Practice, Principles, People, Jurisdictions, Contact/Consultation, Privacy, Terms, and Accessibility. Add anonymized engagements or insights only when approved source material exists.
+5. Have California counsel supply privacy, terms, retention, consent, and engagement-letter content. Product can host those artifacts; it should not invent legal language.
 
-### Phase 4 — Hardening & launch (~3–5 days)
-- Penetration test (third party)
-- Accessibility audit (third party or in-depth axe + manual)
-- DPA paperwork with each vendor
-- Incident-response runbook + on-call rotation
-- Restore-from-backup drill
-- DNS, WAF, security headers (CSP strict, HSTS, COOP/COEP), rate limiting
+**Exit gate:** a client can manage their own account, submit and track a request, see only their own engagement activity, and reach the required public/legal information without encountering placeholder content.
 
----
+### Release 2 — Security and operational resilience
 
-## 8. Open Questions for You
+**Goal:** make the portal dependable under real client data, not merely functional in a happy-path demonstration.
 
-1. **Brand assets.** Do you have a logotype, or do we commission one? (Strong recommendation: commission a single wordmark from a serious typographer; no DIY.)
-2. **Accent color.** Bias toward a deep oxblood, ink navy, or forest? Or stay strictly monochrome?
-3. **Domain.** What domain? Preferred TLD (.com)?
-4. **Entity & insurance.** Firm entity type (LLC/PC), E&O carrier? Affects footer disclosures.
-5. **Counsel.** Which attorney drafts your privacy policy, ToS, and engagement letter template? I'll wire the doc surfaces to whatever they produce; I won't draft legal copy.
-6. **Stripe vs. invoicing-only.** Do clients pay through the portal, or do you invoice out-of-band and just reflect status in the portal?
-7. **Spouse / attorney access.** Should a client be able to grant scoped access to a spouse or attorney on a single engagement? (Default yes, scoped to that engagement only.)
-8. **AI disclosure copy.** Comfortable with explicit "AI-assisted, advisor-reviewed" labels on summarized content?
-9. **Press / engagements.** Any existing case studies or press to seed `/engagements` and `/insights`, or do we launch with the structure and fill over time?
-10. **MFA strictness.** Require passkey + TOTP, or allow TOTP only? (My recommendation: require passkey, allow TOTP as fallback.)
+1. Complete staff MFA enrollment and approve a Super Admin lost-factor recovery runbook with identity verification and audit requirements.
+2. Decide client MFA policy. The default recommendation is staff MFA mandatory; offer client TOTP at onboarding, then require it only after usability and support implications are tested. Do not promise passkeys until they are implemented.
+3. Implement Sentry or an equivalent error monitor with strict PII scrubbing, release identifiers, alert ownership, and a tested incident path.
+4. Add automated accessibility checks to CI plus manual keyboard/screen-reader review. Resolve contrast, focus, labeling, reduced-motion, mobile, and error-announcement findings before broad use.
+5. Execute a restore drill, document retention/deletion handling, confirm vendor DPAs, and obtain an independent application-security review before sensitive volume grows.
+6. Complete the RLS readiness plan before granting any secondary app, reporting tool, or analyst direct database access.
 
----
+**Exit gate:** MFA, monitoring, accessibility, incident response, backups, and least-privilege controls have executed evidence—not simply repository documentation.
 
-## 9. Tool Connection Status
+### Release 3 — Operating refinement from real use
 
-- **Magic MCP (`21st-dev/magic-mcp`)**: Pending — `mcp__magic__*` tools not yet visible in this session. After you've run `npx @21st-dev/cli@latest install claude --api-key <KEY>`, a new Claude Code session is needed for tools to surface. We can build without it (shadcn directly) and adopt Magic once it's live.
-- **UI UX Pro Max skill**: Pending — not in loaded skills list. After `/plugin marketplace add nextlevelbuilder/ui-ux-pro-max-skill` + `/plugin install ui-ux-pro-max@ui-ux-pro-max-skill`, the skill will auto-activate on design prompts.
-- **Anthropic API key**: Needed for AI surfaces in Phase 3 (env var `ANTHROPIC_API_KEY`).
+**Goal:** refine without turning the Private Office into generic project-management software.
 
----
+1. Collect real operating friction from Super Admin, Admin, Contractor, and Client sessions. Prioritize missed deadlines, unclear ownership, permission confusion, correspondence visibility, and finance exceptions.
+2. Add only validated board improvements: bulk actions, transitions, column/view defaults, workload signals, and automation recipes with ownership and run history.
+3. Complete finance exception flows: failed payment, refund if the business process requires it, overdue escalation, and supplemental billing from accepted change orders.
+4. Establish performance budgets for board queries and document lists under a realistic seeded dataset; paginate and index before virtualization is introduced.
 
-## 10. Disclaimers
+**Exit gate:** each new operating control solves an observed workflow problem and preserves auditability, scope authorization, and honest loading/error states.
 
-- I'm not your lawyer. The privacy, ToS, retention, and engagement-letter copy must be drafted or reviewed by California counsel before launch. I'll build the surfaces and the data-handling controls; the legal text is yours.
-- "SOC 2 readiness" is an architecture posture, not a certification. Certification requires an audit firm and ~6–12 months of evidence collection.
-- Final compliance posture depends on the data classes you actually store (e.g., if you handle health-adjacent info from a client, HIPAA-adjacent rules may attach — flag at intake).
+### Release 4 — AI (only after formal approval)
+
+**Goal:** introduce narrow advisor-assist features without making AI a silent participant in confidential client work.
+
+Preconditions: approved vendor/data-processing decision, PII redaction boundary, audit schema, retention policy, disclosure language, human-review workflow, and a failure-mode review.
+
+Sequence: internal consultation triage first; advisor-reviewed document summary second; engagement-scoped retrieval third. Client-visible automation, autonomous replies, and cross-engagement search remain out of scope until separately approved.
+
+## Quality and acceptance gates
+
+Every material release must satisfy these checks in addition to feature-specific tests:
+
+- Role matrix: Super Admin, global Admin, assigned Admin, Contractor, and Client; permitted and forbidden API access; active, absent, revoked, and expired engagement memberships.
+- Truthful state: no zero metrics, completed workflow stages, document counts, or payment status may be inferred while data is loading or absent.
+- Finance: create, review, issue, reminder, payment success/failure, void, change order, PDF, and audit record.
+- Communication: audience isolation, thread/read state, attachment upload/download, notification preference, provider acceptance, and target-mailbox receipt.
+- Documents: upload, publish/unpublish, version, preview/download, delete, access log, and scope/audience isolation.
+- Security: unauthenticated redirect, same-origin mutation protection, rate-limit fail-closed behavior, token expiry, password recovery session revocation, staff MFA, and audit continuity.
+- Experience: keyboard path, visible focus, 44 px targets, mobile flows for inbox/approvals/lookup, empty/loading/error/retry states, and no console errors on core routes.
+- Deployment: exact SHA, green CI, correct Vercel project, both production aliases, fresh authenticated smoke test, and a recorded rollback target.
+
+## Decisions retained from the original plan
+
+- James Roman Advisory represents the owner; public materials remain discreet and anonymized.
+- The visual direction remains quiet authority: editorial restraint, controlled typography, warm neutral surfaces, and no generic SaaS clutter.
+- First-party authentication remains canonical. Clerk and other hosted identity providers remain out of scope.
+- Engagement data is private by default. Raw storage URLs, public buckets, fake portal data, and client-name/address disclosure are prohibited.
+- Legal, retention, and compliance language require qualified California counsel. A product plan is not legal clearance.
+
+## Open decisions requiring owner direction
+
+1. Should clients be required to enroll TOTP at onboarding, or should it remain optional until a passkey implementation exists?
+2. Which public/legal pages have approved copy and source material now? This determines the smallest credible public release.
+3. Should client requests support only advisory/site-visit/document/second-opinion categories, or must they include contractor coordination and scheduling?
+4. Is direct reporting-tool database access a real near-term need? If not, do not spend RLS rollout effort before it has a concrete consumer.
+5. Is AI a near-term revenue/operating need, or should it remain deliberately deferred while the human operating model matures?
