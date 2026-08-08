@@ -20,6 +20,8 @@ threaded correspondence, and secure attachment-history verification.
 - Message attachment metadata, version history, and historical downloads require both `messages.view` and engagement scope. Internal attachment details additionally require `messages.internal_view`; storage pathnames are never returned.
 - Invitations are one-time, hashed tokens stored in `auth_invitations` and expire after seven days.
 - Password recovery uses single-use, hashed tokens that expire after 30 minutes. Successful recovery revokes every existing session and pending login challenge.
+- Authenticated users can manage their own display name, active sessions, password, MFA enrollment/recovery codes, and notification preferences at `/portal/account`. They cannot change their email identity there. Password changes revoke every other session and pending login challenge. Each account-security mutation is rate-limited and commits an access audit event in the same transaction.
+- The account page identifies only the current session and active session timestamps. It does not claim device, browser, IP, or location data that the system does not collect.
 - Post-authentication navigation accepts only normalized same-origin application
   paths; unsafe redirect targets fall back to `/portal`.
 - Browser-originated API mutations require a trusted server-configured origin.

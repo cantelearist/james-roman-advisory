@@ -52,6 +52,8 @@ const LIMITERS: Record<string, { requests: number; window: `${number} s` | `${nu
   "auth-recovery": { requests: 5, window: "15 m" },
   "auth-reset": { requests: 8, window: "15 m" },
   "auth-mfa": { requests: 10, window: "15 m" },
+  // Password, session, and MFA changes can otherwise be abused from a live session.
+  "account-security": { requests: 8, window: "15 m" },
 };
 
 const limiterCache = new Map<string, Ratelimit>();
