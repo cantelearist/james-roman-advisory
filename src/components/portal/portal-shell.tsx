@@ -15,6 +15,7 @@ import {
   Search,
   Settings,
   ShieldCheck,
+  UserRound,
   Users,
   X,
 } from "lucide-react";
@@ -71,6 +72,7 @@ const PRIMARY_NAV: NavigationItem[] = [
   { href: "/portal/inbox", label: "Inbox", icon: Inbox, capability: "messages.view" },
   { href: "/portal/vault", label: "Documents", icon: FileText, capability: "documents.view" },
   { href: "/portal/finance", label: "Finance", icon: CircleDollarSign, capability: "finance.view" },
+  { href: "/portal/account", label: "Account", icon: UserRound },
 ];
 
 const ADMIN_NAV: NavigationItem[] = [
